@@ -24,6 +24,10 @@ def append_to_prompt(user_input=''):
         clipboard_content = pyperclip.paste()
         logging.debug("Got clipboard content")
 
+        # Clear the clipboard
+        pyperclip.copy('')
+        logging.debug("Cleared clipboard")
+
         # Combine user input (if any) and clipboard content
         new_content = f"##problem_or_log_issue#\n{user_input}\n{clipboard_content}\n"
         logging.debug("Created new content with user input and clipboard content")
@@ -37,7 +41,7 @@ def append_to_prompt(user_input=''):
             file.write(combined_content)
         logging.debug("Wrote combined content to prompt.md")
 
-        # Copy the combined content back to clipboard
+        # Copy the combined content to clipboard
         pyperclip.copy(combined_content)
         logging.debug("Copied combined content to clipboard")
 
