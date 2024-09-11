@@ -5,7 +5,7 @@ import os
 # Set up logging
 logging.basicConfig(filename='clipboard_appender.log', level=logging.DEBUG)
 
-def append_to_prompt():
+def append_to_prompt(user_input=''):
     try:
         logging.debug("Function append_to_prompt started")
         
@@ -24,20 +24,31 @@ def append_to_prompt():
         clipboard_content = pyperclip.paste()
         logging.debug("Got clipboard content")
 
-        # Combine prompt and clipboard content
-        combined_content = prompt_content + clipboard_content
+        # Combine user input (if any) and clipboard content
+        new_content = f"##problem_or_log_issue#\n{user_input}\n{clipboard_content}\n"
+        logging.debug("Created new content with user input and clipboard content")
+
+        # Combine prompt and new content
+        combined_content = prompt_content + new_content
         logging.debug("Combined contents")
+
+        # Write the combined content to prompt.md
+        with open('prompt.md', 'w') as file:
+            file.write(combined_content)
+        logging.debug("Wrote combined content to prompt.md")
 
         # Copy the combined content back to clipboard
         pyperclip.copy(combined_content)
         logging.debug("Copied combined content to clipboard")
 
-        print("Prompt + clipboard has been added to your clipboard")
+        print("Content has been appended to prompt.md and copied to your clipboard")
     except Exception as e:
         logging.exception("An error occurred in append_to_prompt")
         print(f"An error occurred: {str(e)}")
 
-print("Press Enter to append clipboard content to prompt.md (or 'q' to quit)")
+print("Press Enter to append clipboard content to prompt.md")
+print("Or type your text and press Enter to append both your text and clipboard content")
+print("Type 'q' to quit")
 
 try:
     while True:
@@ -45,7 +56,7 @@ try:
         if user_input.lower() == 'q':
             print("Exiting the program.")
             break
-        append_to_prompt()
+        append_to_prompt(user_input)
 except KeyboardInterrupt:
     print("\nProgram interrupted. Exiting.")
 except Exception as e:
