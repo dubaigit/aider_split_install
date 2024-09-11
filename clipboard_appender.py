@@ -1,25 +1,50 @@
 import pyperclip
 import keyboard
 import time
+import logging
+import os
+
+# Set up logging
+logging.basicConfig(filename='clipboard_appender.log', level=logging.DEBUG)
 
 def append_to_prompt():
-    # Read the content of prompt.md
-    with open('prompt.md', 'r') as file:
-        prompt_content = file.read()
+    try:
+        logging.debug("Function append_to_prompt started")
+        
+        # Check if prompt.md exists
+        if not os.path.exists('prompt.md'):
+            logging.error("prompt.md does not exist")
+            print("Error: prompt.md does not exist")
+            return
 
-    # Get the clipboard content
-    clipboard_content = pyperclip.paste()
+        # Read the content of prompt.md
+        with open('prompt.md', 'r') as file:
+            prompt_content = file.read()
+        logging.debug("Read prompt.md successfully")
 
-    # Combine prompt and clipboard content
-    combined_content = prompt_content + clipboard_content
+        # Get the clipboard content
+        clipboard_content = pyperclip.paste()
+        logging.debug("Got clipboard content")
 
-    # Copy the combined content back to clipboard
-    pyperclip.copy(combined_content)
+        # Combine prompt and clipboard content
+        combined_content = prompt_content + clipboard_content
+        logging.debug("Combined contents")
 
-    print("Prompt + clipboard has been added to your clipboard")
+        # Copy the combined content back to clipboard
+        pyperclip.copy(combined_content)
+        logging.debug("Copied combined content to clipboard")
+
+        print("Prompt + clipboard has been added to your clipboard")
+    except Exception as e:
+        logging.exception("An error occurred in append_to_prompt")
+        print(f"An error occurred: {str(e)}")
 
 print("Press Enter to append clipboard content to prompt.md")
 keyboard.add_hotkey('enter', append_to_prompt)
 
-# Keep the script running
-keyboard.wait()
+try:
+    # Keep the script running
+    keyboard.wait()
+except Exception as e:
+    logging.exception("An error occurred in main script execution")
+    print(f"An error occurred: {str(e)}")
