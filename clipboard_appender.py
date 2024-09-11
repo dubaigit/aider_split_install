@@ -1,6 +1,4 @@
 import pyperclip
-import keyboard
-import time
 import logging
 import os
 
@@ -39,12 +37,17 @@ def append_to_prompt():
         logging.exception("An error occurred in append_to_prompt")
         print(f"An error occurred: {str(e)}")
 
-print("Press Enter to append clipboard content to prompt.md")
-keyboard.add_hotkey('enter', append_to_prompt)
+print("Press Enter to append clipboard content to prompt.md (or 'q' to quit)")
 
 try:
-    # Keep the script running
-    keyboard.wait()
+    while True:
+        user_input = input()
+        if user_input.lower() == 'q':
+            print("Exiting the program.")
+            break
+        append_to_prompt()
+except KeyboardInterrupt:
+    print("\nProgram interrupted. Exiting.")
 except Exception as e:
     logging.exception("An error occurred in main script execution")
     print(f"An error occurred: {str(e)}")
