@@ -36,7 +36,7 @@ def append_to_prompt(user_input=''):
         combined_content = prompt_content + new_content
         logging.debug("Combined contents")
 
-        # Write the combined content to prompt.md
+        # Write the combined content to prompt.md (overwriting the file)
         with open('prompt.md', 'w') as file:
             file.write(combined_content)
         logging.debug("Wrote combined content to prompt.md")
@@ -45,7 +45,7 @@ def append_to_prompt(user_input=''):
         pyperclip.copy(combined_content)
         logging.debug("Copied combined content to clipboard")
 
-        print("Content has been appended to prompt.md and copied to your clipboard")
+        print("Content has been updated in prompt.md and copied to your clipboard")
     except Exception as e:
         logging.exception("An error occurred in append_to_prompt")
         print(f"An error occurred: {str(e)}")
