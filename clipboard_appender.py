@@ -32,9 +32,9 @@ def append_to_prompt(user_input=''):
         new_content = f"##problem_or_log_issue#\n{user_input}\n{clipboard_content}\n"
         logging.debug("Created new content with user input and clipboard content")
 
-        # Combine prompt and new content
-        combined_content = prompt_content + new_content
-        logging.debug("Combined contents")
+        # Combine prompt and new content (without accumulating previous entries)
+        combined_content = prompt_content.split("##problem_or_log_issue#")[0].strip() + "\n\n" + new_content
+        logging.debug("Combined prompt and new content")
 
         # Write the combined content to prompt.md (overwriting the file)
         with open('prompt.md', 'w') as file:
