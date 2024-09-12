@@ -34,15 +34,23 @@
             transform: scale(1.05);
             background-color: #ff6666;
         }
+        #explode-button:active {
+            transform: scale(0.95);
+        }
         .particle {
             position: absolute;
-            background-color: #ff4444;
             border-radius: 50%;
-            animation: explode 0.5s ease-out forwards;
+            animation: explode 0.8s ease-out forwards;
         }
         @keyframes explode {
-            to {
-                transform: translate(var(--tx), var(--ty));
+            0% {
+                transform: scale(0);
+            }
+            50% {
+                transform: scale(1) translate(calc(var(--tx) * 0.5), calc(var(--ty) * 0.5));
+            }
+            100% {
+                transform: scale(0.5) translate(var(--tx), var(--ty));
                 opacity: 0;
             }
         }
@@ -54,35 +62,44 @@
         const button = document.getElementById('explode-button');
         
         function createParticles() {
-            const particleCount = 30;
+            const particleCount = 100;
+            const colors = ['#ff4444', '#ffaa00', '#ffff00', '#00ff00', '#00ffff', '#0088ff', '#8800ff'];
+            
             for (let i = 0; i < particleCount; i++) {
                 const particle = document.createElement('div');
                 particle.classList.add('particle');
-                const size = Math.random() * 8 + 4;
+                const size = Math.random() * 12 + 4;
                 particle.style.width = `${size}px`;
                 particle.style.height = `${size}px`;
                 particle.style.left = '50%';
                 particle.style.top = '50%';
                 
                 const angle = Math.random() * Math.PI * 2;
-                const distance = Math.random() * 100 + 50;
+                const distance = Math.random() * 150 + 50;
                 const tx = Math.cos(angle) * distance;
                 const ty = Math.sin(angle) * distance;
                 
                 particle.style.setProperty('--tx', `${tx}px`);
                 particle.style.setProperty('--ty', `${ty}px`);
                 
+                const colorIndex = Math.floor(Math.random() * colors.length);
+                particle.style.backgroundColor = colors[colorIndex];
+                
                 button.appendChild(particle);
                 
                 setTimeout(() => {
                     particle.remove();
-                }, 500);
+                }, 800);
             }
         }
         
         button.addEventListener('click', (e) => {
             e.preventDefault();
+            button.style.transform = 'scale(0.95)';
             createParticles();
+            setTimeout(() => {
+                button.style.transform = '';
+            }, 150);
         });
     </script>
 </body>
