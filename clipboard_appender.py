@@ -1,6 +1,7 @@
 import pyperclip
 import logging
 import os
+from clipboard_extractor import extract_from_clipboard
 
 # Set up logging
 logging.basicConfig(filename='clipboard_appender.log', level=logging.DEBUG)
@@ -52,6 +53,7 @@ def append_to_prompt(user_input=''):
 
 print("Press Enter to append clipboard content to prompt.md")
 print("Or type your text and press Enter to append both your text and clipboard content")
+print("Type 'e' to extract warnings and errors from clipboard")
 print("Type 'q' to quit")
 
 try:
@@ -60,7 +62,10 @@ try:
         if user_input.lower() == 'q':
             print("Exiting the program.")
             break
-        append_to_prompt(user_input)
+        elif user_input.lower() == 'e':
+            extract_from_clipboard()
+        else:
+            append_to_prompt(user_input)
 except KeyboardInterrupt:
     print("\nProgram interrupted. Exiting.")
 except Exception as e:
