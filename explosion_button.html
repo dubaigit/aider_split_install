@@ -1,10 +1,11 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exploding Button</title>
+    <title>زر الانفجار</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
             display: flex;
@@ -13,7 +14,7 @@
             height: 100vh;
             margin: 0;
             background-color: #f0f0f0;
-            font-family: Arial, sans-serif;
+            font-family: 'Noto Sans Arabic', Arial, sans-serif;
         }
         #explode-button {
             padding: 15px 30px;
@@ -26,6 +27,8 @@
             transition: transform 0.3s, background-color 0.3s;
             position: relative;
             overflow: hidden;
+            text-align: center;
+            direction: rtl;
         }
         #explode-button:hover {
             transform: scale(1.05);
@@ -46,7 +49,7 @@
     </style>
 </head>
 <body>
-    <button id="explode-button">Click to Explode!</button>
+    <button id="explode-button">انقر للانفجار!</button>
     <script>
         const button = document.getElementById('explode-button');
         
