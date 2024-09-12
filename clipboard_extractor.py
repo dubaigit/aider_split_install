@@ -5,12 +5,12 @@ from datetime import datetime
 
 def extract_warnings_and_errors(text):
     # Regular expressions for warnings and errors
-    warning_pattern = r'(?i)^.*warning:.*$'
-    error_pattern = r'(?i)^.*error:.*$'
+    warning_pattern = r'^.*WARNING.*$'
+    error_pattern = r'^.*ERROR.*$'
     
     # Find all warnings and errors
-    warnings = re.findall(warning_pattern, text, re.MULTILINE)
-    errors = re.findall(error_pattern, text, re.MULTILINE)
+    warnings = re.findall(warning_pattern, text, re.MULTILINE | re.IGNORECASE)
+    errors = re.findall(error_pattern, text, re.MULTILINE | re.IGNORECASE)
     
     return warnings, errors
 
@@ -43,7 +43,7 @@ def extract_from_clipboard(save_to_file=False):
     # Copy the extracted content back to clipboard
     pyperclip.copy(result)
     
-    print("Warnings and errors have been extracted, printed, and copied to your clipboard.")
+    print("Full warning and error lines have been extracted, printed, and copied to your clipboard.")
     
     if save_to_file:
         save_logs_to_file(warnings, errors)
