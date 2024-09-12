@@ -54,6 +54,7 @@ def append_to_prompt(user_input=''):
 print("Press Enter to append clipboard content to prompt.md")
 print("Or type your text and press Enter to append both your text and clipboard content")
 print("Type 'e' to extract warnings and errors from clipboard")
+print("Type 'f' to extract full warning and error logs and save to files")
 print("Type 'q' to quit")
 
 try:
@@ -64,6 +65,8 @@ try:
             break
         elif user_input.lower() == 'e':
             extract_from_clipboard()
+        elif user_input.lower() == 'f':
+            extract_from_clipboard(save_to_file=True)
         else:
             append_to_prompt(user_input)
 except KeyboardInterrupt:
