@@ -3,12 +3,12 @@ import pyperclip
 import os
 from datetime import datetime
 
-def extract_full_logs(text):
+def extract_warnings_and_errors(text):
     # Regular expressions for warnings and errors
-    warning_pattern = r'(?i)(?:^|\n).*warning:.*(?:\n(?!(?:error:|warning:)).*)*'
-    error_pattern = r'(?i)(?:^|\n).*error:.*(?:\n(?!(?:error:|warning:)).*)*'
+    warning_pattern = r'(?i)^.*warning:.*$'
+    error_pattern = r'(?i)^.*error:.*$'
     
-    # Find all warnings and errors with their context
+    # Find all warnings and errors
     warnings = re.findall(warning_pattern, text, re.MULTILINE)
     errors = re.findall(error_pattern, text, re.MULTILINE)
     
@@ -19,23 +19,23 @@ def save_logs_to_file(warnings, errors):
     
     if warnings:
         with open(f'warning_log_{timestamp}.txt', 'w') as f:
-            f.write('\n\n'.join(warnings))
-        print(f"Full warning log saved to warning_log_{timestamp}.txt")
+            f.write('\n'.join(warnings))
+        print(f"Warning log saved to warning_log_{timestamp}.txt")
     
     if errors:
         with open(f'error_log_{timestamp}.txt', 'w') as f:
-            f.write('\n\n'.join(errors))
-        print(f"Full error log saved to error_log_{timestamp}.txt")
+            f.write('\n'.join(errors))
+        print(f"Error log saved to error_log_{timestamp}.txt")
 
 def extract_from_clipboard(save_to_file=False):
     # Get clipboard content
     clipboard_content = pyperclip.paste()
     
     # Extract warnings and errors
-    warnings, errors = extract_full_logs(clipboard_content)
+    warnings, errors = extract_warnings_and_errors(clipboard_content)
     
     # Combine and format the results
-    result = "Warnings:\n" + "\n\n".join(warnings) + "\n\nErrors:\n" + "\n\n".join(errors)
+    result = "Warnings:\n" + "\n".join(warnings) + "\n\nErrors:\n" + "\n".join(errors)
     
     # Print the extracted content
     print(result)
@@ -43,7 +43,7 @@ def extract_from_clipboard(save_to_file=False):
     # Copy the extracted content back to clipboard
     pyperclip.copy(result)
     
-    print("Full warnings and errors have been extracted, printed, and copied to your clipboard.")
+    print("Warnings and errors have been extracted, printed, and copied to your clipboard.")
     
     if save_to_file:
         save_logs_to_file(warnings, errors)
