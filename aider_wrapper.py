@@ -205,6 +205,7 @@ def main():
             "aider",
             "--no-pretty",
             "--dark-mode",
+            "--edit-format", "whole",
             "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
