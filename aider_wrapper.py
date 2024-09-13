@@ -139,6 +139,9 @@ def interactive_mode(args, file_contents):
         if args.model:
             aider_command.extend(["--model", args.model])
 
+        if args.edit_format:
+            aider_command.extend(["--edit-format", args.edit_format])
+
         aider_command.extend(args.filenames)
 
         run_aider_command(aider_command, temp_message_file.name)
@@ -153,6 +156,7 @@ def main():
     parser.add_argument("--model", default="openai/o1-preview", help="Model to use for aider")
     parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
     parser.add_argument("--interactive", action="store_true", help="Enable interactive mode")
+    parser.add_argument("--edit-format", choices=["whole", "diff"], help="Edit format for aider (whole or diff)")
 
     args = parser.parse_args()
 
@@ -204,7 +208,6 @@ def main():
             "aider",
             "--no-pretty",
             "--dark-mode",
-            "--edit-format", "whole",
             "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
@@ -213,6 +216,10 @@ def main():
         # Add the model argument separately
         if args.model:
             aider_command.extend(["--model", args.model])
+
+        # Add the edit-format argument if specified
+        if args.edit_format:
+            aider_command.extend(["--edit-format", args.edit_format])
 
         aider_command.extend(args.filenames)
 
