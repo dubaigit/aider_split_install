@@ -22,7 +22,7 @@ def create_message_content(instructions, file_contents):
 
     existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
     
-    content = f"{prompt}\n\n<problem_description>\n{instructions}\n</problem_description>\n\n<existing_code>\n{existing_code}\n</existing_code>"
+    content = f""
     return content
 
 def enhance_user_experience():
@@ -131,7 +131,6 @@ def interactive_mode(args, file_contents):
             "aider",
             "--no-pretty",
             "--dark-mode",
-            "--edit-format", "whole",
             "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
