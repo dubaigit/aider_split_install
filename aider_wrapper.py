@@ -131,7 +131,7 @@ def interactive_mode(args, file_contents):
             "aider",
             "--no-pretty",
             "--dark-mode",
-            "--edit-format whole",
+            "--edit-format", "whole",
             "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
