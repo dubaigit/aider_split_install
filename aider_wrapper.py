@@ -14,7 +14,8 @@ def read_file_content(filename):
         return file.read()
 
 def remove_urls(text):
-    url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+    # This pattern matches URLs starting with http://, https://, or www.
+    url_pattern = re.compile(r'(https?:\/\/|www\.)\S+\b')
     return url_pattern.sub('', text)
 
 def create_message_content(instructions, file_contents):
@@ -178,10 +179,9 @@ def interactive_mode(args, file_contents):
             message.append(line)
 
         if use_clipboard:
-            message = clipboard_content
+            message = remove_urls(clipboard_content)
         else:
-            message = "\n".join(message)
-            message = remove_urls(message)
+            message = remove_urls("\n".join(message))
 
         if not message.strip():
             print("Empty message. Please try again.")
