@@ -209,7 +209,7 @@ def handle_prompts(process):
         else:
             time.sleep(1)
 
-def run_aider_command(aider_command, temp_message_file):
+def run_aider_command(aider_command, temp_message_file_name):
     print("\nExecuting aider command:")
     print(" ".join(aider_command))
 
@@ -240,7 +240,7 @@ def run_aider_command(aider_command, temp_message_file):
         if process.poll() is None:
             process.terminate()
             process.wait()
-        print(f"\nTemporary file not deleted: {temp_message_file.name}")
+        print(f"\nTemporary file not deleted: {temp_message_file_name}")
 
 def interactive_mode(args, file_contents):
     print("Entering interactive mode. Instructions:")
