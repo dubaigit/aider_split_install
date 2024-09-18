@@ -197,27 +197,21 @@ def run_aider_command(aider_command, temp_message_file):
     print(" ".join(aider_command))
 
     try:
-        process = subprocess.Popen(aider_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        process = subprocess.Popen(aider_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
         while True:
             reads = [process.stdout.fileno(), process.stderr.fileno()]
-            ret = select.select(reads, [], [], 0.1)
+            ret = select.select(reads, [], [])
 
             for fd in ret[0]:
                 if fd == process.stdout.fileno():
                     read = process.stdout.readline()
-                    if read:
-                        sys.stdout.write(read)
-                        sys.stdout.flush()
-                        response = handle_prompt(read)
-                        if response:
-                            process.stdin.write(response)
-                            process.stdin.flush()
+                    sys.stdout.write(read)
+                    sys.stdout.flush()
                 if fd == process.stderr.fileno():
                     read = process.stderr.readline()
-                    if read:
-                        sys.stderr.write(read)
-                        sys.stderr.flush()
+                    sys.stderr.write(read)
+                    sys.stderr.flush()
 
             if process.poll() is not None:
                 break
@@ -293,6 +287,7 @@ def interactive_mode(args, file_contents):
             "aider",
             "--no-pretty",
             "--dark-mode",
+            "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
         ]
@@ -365,6 +360,7 @@ def main():
             "aider",
             "--no-pretty",
             "--dark-mode",
+            "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
         ]
@@ -381,12 +377,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-def handle_prompt(prompt):
-    if "Do you want to add this file" in prompt:
-        return "Y\n"
-    elif "Do you want to include this URL" in prompt:
-        return "N\n"
-    elif "Do you want to skip all remaining URLs" in prompt:
-        return "S\n"
-    else:
-        return input(prompt)
