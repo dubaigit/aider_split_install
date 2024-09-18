@@ -232,6 +232,7 @@ def main():
         "--yes",
         "--chat-mode", args.chat_mode,
         "--message-file", temp_message_file.name,
+        "--always-yes-to-fix-lint-errors",
     ]
 
     # Add the model argument separately
