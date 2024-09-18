@@ -295,21 +295,58 @@ def interactive_mode(args, file_contents):
             aider_command.extend(["--model", args.model])
 
         aider_command.extend(file_contents.keys())
+        aider_command.extend(args.urls)
 
         run_aider_command(aider_command, temp_message_file.name)
 
         print(f"\nTemporary file not deleted: {temp_message_file.name}")
         print("\nReady for next input. Press Enter to use clipboard or start typing.")
 
+def is_url(s):
+    url_pattern = re.compile(
+        r'^(?:http|ftp)s?://'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+    return url_pattern.match(s) is not None
+
+def prompt_for_url(url):
+    while True:
+        response = input(f"Include this URL: {url}? (Y)es/(N)o/(S)kip all: ").strip().lower()
+        if response in ['y', 'n', 's']:
+            return response
+        print("Invalid input. Please enter 'Y', 'N', or 'S'.")
+
 def main():
     parser = argparse.ArgumentParser(description="Wrapper for aider command")
     parser.add_argument("-i", "--instructions", help="File containing instructions")
-    parser.add_argument("filenames", nargs='+', help="Filenames to process")
+    parser.add_argument("inputs", nargs='+', help="Filenames or URLs to process")
     parser.add_argument("--model", default="openrouter/anthropic/claude-3.5-sonnet:beta", help="Model to use for aider")
     parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
     parser.add_argument("--interactive", action="store_true", help="Enable interactive mode")
 
     args = parser.parse_args()
+
+    # URL handling logic
+    skip_all_urls = False
+    urls = []
+    filenames = []
+
+    for input_item in args.inputs:
+        if is_url(input_item):
+            if not skip_all_urls:
+                response = prompt_for_url(input_item)
+                if response == 'y':
+                    urls.append(input_item)
+                elif response == 's':
+                    skip_all_urls = True
+        else:
+            filenames.append(input_item)
+
+    args.filenames = filenames
+    args.urls = urls
 
     print("Running aider wrapper with the following parameters:")
     print(f"Filenames: {', '.join(args.filenames)}")
@@ -332,25 +369,19 @@ def main():
     except Exception as e:
         print(f"Error creating git commit: {e}")
 
-    # Read file contents and handle URLs
+    # Read file contents with prompts
     file_contents = {}
-    files_to_add = []
-    for item in args.filenames:
-        if re.match(r'https?://\S+', item):
-            response = input(f"Add URL {item} to the chat? (Y)es/(N)o/(S)kip all [Yes]: ").lower()
-            if response == "s":
-                break
-            elif response != "n":
-                files_to_add.append(item)
+    for filename in args.filenames:
+        print(f"\nProcessing file: {filename}")
+        if os.path.exists(filename):
+            content = read_file_content(filename)
+            print(f"File contents ({len(content)} characters):")
+            print(content[:200] + "..." if len(content) > 200 else content)
+            include = input("Include this file? (Y/n): ").strip().lower()
+            if include != 'n':
+                file_contents[filename] = content
         else:
-            response = input(f"Add file {item} to the chat? (Y)es/(N)o [Yes]: ").lower()
-            if response != "n":
-                try:
-                    file_contents[item] = read_file_content(item)
-                except FileNotFoundError:
-                    print(f"Warning: File {item} not found. Skipping.")
-
-    approved_items = list(file_contents.keys()) + files_to_add
+            print(f"Warning: File {filename} does not exist. Skipping.")
 
     if args.interactive:
         interactive_mode(args, file_contents)
@@ -384,8 +415,9 @@ def main():
         if args.model:
             aider_command.extend(["--model", args.model])
 
-        aider_command.extend(approved_items)
-
+        # Add approved files and URLs to the command
+        aider_command.extend(file_contents.keys())
+        aider_command.extend(args.urls)
         run_aider_command(aider_command, temp_message_file.name)
 
         print(f"\nTemporary file not deleted: {temp_message_file.name}")
