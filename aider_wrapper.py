@@ -294,7 +294,7 @@ def interactive_mode(args, file_contents):
         if args.model:
             aider_command.extend(["--model", args.model])
 
-        aider_command.extend(args.filenames)
+        aider_command.extend(file_contents.keys())
 
         run_aider_command(aider_command, temp_message_file.name)
 
@@ -332,24 +332,25 @@ def main():
     except Exception as e:
         print(f"Error creating git commit: {e}")
 
-    # Read file contents
+    # Read file contents and handle URLs
     file_contents = {}
-    for filename in args.filenames:
-        response = input(f"Add {filename} to the chat? (Y)es/(N)o [Yes]: ").lower()
-        if response != "n":
-            file_contents[filename] = read_file_content(filename)
-
-    # Handle URLs
-    urls = re.findall(r'(https?://\S+)', ' '.join(args.filenames))
     files_to_add = []
-    for url in urls:
-        response = input(f"Add URL to the chat? (Y)es/(N)o/(S)kip all [Yes]: ").lower()
-        if response == "s":
-            break
-        elif response != "n":
-            files_to_add.append(url)
+    for item in args.filenames:
+        if re.match(r'https?://\S+', item):
+            response = input(f"Add URL {item} to the chat? (Y)es/(N)o/(S)kip all [Yes]: ").lower()
+            if response == "s":
+                break
+            elif response != "n":
+                files_to_add.append(item)
+        else:
+            response = input(f"Add file {item} to the chat? (Y)es/(N)o [Yes]: ").lower()
+            if response != "n":
+                try:
+                    file_contents[item] = read_file_content(item)
+                except FileNotFoundError:
+                    print(f"Warning: File {item} not found. Skipping.")
 
-    args.filenames = list(file_contents.keys()) + files_to_add
+    approved_items = list(file_contents.keys()) + files_to_add
 
     if args.interactive:
         interactive_mode(args, file_contents)
@@ -375,7 +376,6 @@ def main():
             "aider",
             "--no-pretty",
             "--dark-mode",
-            "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
         ]
@@ -384,7 +384,7 @@ def main():
         if args.model:
             aider_command.extend(["--model", args.model])
 
-        aider_command.extend(args.filenames)
+        aider_command.extend(approved_items)
 
         run_aider_command(aider_command, temp_message_file.name)
 
