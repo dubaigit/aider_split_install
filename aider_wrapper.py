@@ -192,33 +192,31 @@ def enhance_user_experience():
     for i in tqdm(range(10), desc="Preparing environment"):
         time.sleep(0.1)
 
-def handle_prompts(process):
-    while True:
-        if process.poll() is not None:
-            break
-        readable, _, _ = select.select([process.stdout], [], [], 1)
-        if readable:
-            output = process.stdout.read()
-            sys.stdout.write(output)
-            if "Add URL to the chat?" in output:
-                user_input = input(output)
-                process.stdin.write(user_input + "\n")
-            elif "Add" in output and "to the chat?" in output:
-                process.stdin.write("Y\n")
-            process.stdin.flush()
-        else:
-            time.sleep(1)
-
-def run_aider_command(aider_command, temp_message_file_name):
+def run_aider_command(aider_command, temp_message_file):
     print("\nExecuting aider command:")
     print(" ".join(aider_command))
 
     try:
-        process = subprocess.Popen(aider_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        handle_prompts(process)
-        process.wait()
+        process = subprocess.Popen(aider_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
-        rc = process.returncode
+        while True:
+            reads = [process.stdout.fileno(), process.stderr.fileno()]
+            ret = select.select(reads, [], [])
+
+            for fd in ret[0]:
+                if fd == process.stdout.fileno():
+                    read = process.stdout.readline()
+                    sys.stdout.write(read)
+                    sys.stdout.flush()
+                if fd == process.stderr.fileno():
+                    read = process.stderr.readline()
+                    sys.stderr.write(read)
+                    sys.stderr.flush()
+
+            if process.poll() is not None:
+                break
+
+        rc = process.poll()
         if rc != 0:
             raise subprocess.CalledProcessError(rc, aider_command)
     except subprocess.CalledProcessError as e:
@@ -229,18 +227,11 @@ def run_aider_command(aider_command, temp_message_file_name):
         sys.exit(1)
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
-        process.terminate()
-        process.wait()
         sys.exit(1)
     except Exception as e:
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         print("Please report this issue to the developers.")
         sys.exit(1)
-    finally:
-        if process.poll() is None:
-            process.terminate()
-            process.wait()
-        print(f"\nTemporary file not deleted: {temp_message_file_name}")
 
 def interactive_mode(args, file_contents):
     print("Entering interactive mode. Instructions:")
