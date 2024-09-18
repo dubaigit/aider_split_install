@@ -183,26 +183,28 @@ def enhance_user_experience():
 
 def handle_aider_prompts(process):
     while True:
-        line = process.stdout.readline()
-        if not line:
-            break
-        
-        print(line, end='')  # Print the line for user visibility
-        
-        # Handle file prompts
-        if re.search(r'Add .+ to the chat\? \(Y\)es/\(N\)o \[Yes\]:', line):
-            process.stdin.write('Y\n')
-            process.stdin.flush()
-        
-        # Handle multi-link prompts
-        elif 'Add URL to the chat? (Y)es/(N)o/(A)ll/(S)kip all [Yes]:' in line:
-            process.stdin.write('S\n')
-            process.stdin.flush()
-        
-        # Handle single link prompts
-        elif 'Add URL to the chat? (Y)es/(N)o [Yes]:' in line:
-            process.stdin.write('N\n')
-            process.stdin.flush()
+        ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
+        for stream in ready:
+            line = stream.readline()
+            if not line:
+                return
+            
+            print(line, end='', flush=True)  # Print the line for user visibility
+            
+            # Handle file prompts
+            if re.search(r'Add .+ to the chat\? \(Y\)es/\(N\)o \[Yes\]:', line):
+                process.stdin.write('Y\n')
+                process.stdin.flush()
+            
+            # Handle multi-link prompts
+            elif 'Add URL to the chat? (Y)es/(N)o/(A)ll/(S)kip all [Yes]:' in line:
+                process.stdin.write('S\n')
+                process.stdin.flush()
+            
+            # Handle single link prompts
+            elif 'Add URL to the chat? (Y)es/(N)o [Yes]:' in line:
+                process.stdin.write('N\n')
+                process.stdin.flush()
 
 def main():
     parser = argparse.ArgumentParser(description="Wrapper for aider command")
@@ -272,12 +274,6 @@ def main():
         process = subprocess.Popen(aider_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, universal_newlines=True, bufsize=1)
 
         handle_aider_prompts(process)
-
-        # Handle remaining output
-        for line in process.stdout:
-            print(line, end='')
-        for line in process.stderr:
-            print(line, end='', file=sys.stderr)
 
         rc = process.wait()
         if rc != 0:
