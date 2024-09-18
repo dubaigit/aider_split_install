@@ -11,3 +11,14 @@ echo "##active_line6##"
 https://another-example.com
 echo "##active_line7##"
 
+echo "##active_line2##"
+This is a comment with a URL:
+echo "##active_line3##"
+https://example.com
+echo "##active_line4##"
+
+echo "##active_line5##"
+This is another comment with a URL:
+echo "##active_line6##"
+https://another-example.com
+echo "##active_line7##"
