@@ -6,6 +6,8 @@ import tempfile
 import select
 import git
 import re
+import pyperclip
+import shutil
 
 def read_file_content(filename):
     with open(filename, 'r') as file:
@@ -181,6 +183,14 @@ def enhance_user_experience():
     for i in tqdm(range(10), desc="Preparing environment"):
         time.sleep(0.1)
 
+def get_clipboard_content():
+    """
+    Get content from clipboard and wait for user input.
+    """
+    print("Clipboard content will be used. Press Enter when ready...")
+    input()
+    return pyperclip.paste()
+
 def handle_aider_prompts(process):
     while True:
         ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
@@ -208,15 +218,25 @@ def handle_aider_prompts(process):
 
 def main():
     parser = argparse.ArgumentParser(description="Wrapper for aider command")
-    parser.add_argument("-i", "--instructions", required=True, help="File containing instructions")
-    parser.add_argument("filenames", nargs='+', help="Filenames to process")
+    parser.add_argument("-i", "--instructions", help="File containing instructions")
+    parser.add_argument("-c", "--clipboard", action="store_true", help="Use clipboard content as instructions")
+    parser.add_argument("filenames", nargs='*', help="Filenames to process")
     parser.add_argument("--model", default="openrouter/anthropic/claude-3.5-sonnet", help="Model to use for aider")
     parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
 
     args = parser.parse_args()
 
+    if args.clipboard and args.instructions:
+        print("Error: Cannot use both clipboard and instruction file. Choose one option.")
+        sys.exit(1)
+
+    if not args.clipboard and not args.instructions:
+        print("Error: Must specify either clipboard (-c) or instruction file (-i).")
+        sys.exit(1)
+
     print("Running aider wrapper with the following parameters:")
     print(f"Filenames: {', '.join(args.filenames)}")
+    print(f"Using clipboard: {args.clipboard}")
     print(f"Instructions file: {args.instructions}")
     print(f"Model: {args.model}")
     print(f"Dark mode: Enabled")
@@ -235,8 +255,11 @@ def main():
     except Exception as e:
         print(f"Error creating git commit: {e}")
 
-    # Read instruction file content
-    instructions = read_file_content(args.instructions)
+    # Get instructions content
+    if args.clipboard:
+        instructions = get_clipboard_content()
+    else:
+        instructions = read_file_content(args.instructions)
 
     # Read file contents
     file_contents = {filename: read_file_content(filename) for filename in args.filenames}
@@ -292,7 +315,10 @@ def main():
         print("Please report this issue to the developers.")
         sys.exit(1)
 
-    print(f"\nTemporary file not deleted: {temp_message_file.name}")
+    # Move the temporary file to the current directory
+    new_file_path = os.path.join(os.getcwd(), os.path.basename(temp_message_file.name))
+    shutil.move(temp_message_file.name, new_file_path)
+    print(f"\nTemporary file moved to: {new_file_path}")
 
 if __name__ == "__main__":
     main()
