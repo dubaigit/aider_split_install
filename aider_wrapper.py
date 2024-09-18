@@ -287,7 +287,6 @@ def interactive_mode(args, file_contents):
             "aider",
             "--no-pretty",
             "--dark-mode",
-            "--yes",
             "--chat-mode", args.chat_mode,
             "--message-file", temp_message_file.name,
         ]
@@ -334,7 +333,23 @@ def main():
         print(f"Error creating git commit: {e}")
 
     # Read file contents
-    file_contents = {filename: read_file_content(filename) for filename in args.filenames}
+    file_contents = {}
+    for filename in args.filenames:
+        response = input(f"Add {filename} to the chat? (Y)es/(N)o [Yes]: ").lower()
+        if response != "n":
+            file_contents[filename] = read_file_content(filename)
+
+    # Handle URLs
+    urls = re.findall(r'(https?://\S+)', ' '.join(args.filenames))
+    files_to_add = []
+    for url in urls:
+        response = input(f"Add URL to the chat? (Y)es/(N)o/(S)kip all [Yes]: ").lower()
+        if response == "s":
+            break
+        elif response != "n":
+            files_to_add.append(url)
+
+    args.filenames = list(file_contents.keys()) + files_to_add
 
     if args.interactive:
         interactive_mode(args, file_contents)
