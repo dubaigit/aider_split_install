@@ -203,8 +203,9 @@ def handle_prompts(process):
             if "Add URL to the chat?" in output:
                 user_input = input(output)
                 process.stdin.write(user_input + "\n")
-            if "Add main.py to the chat?" in output or "Add README.md to the chat?" in output:
+            elif "Add" in output and "to the chat?" in output:
                 process.stdin.write("Y\n")
+            process.stdin.flush()
         else:
             time.sleep(1)
 
@@ -228,11 +229,18 @@ def run_aider_command(aider_command, temp_message_file):
         sys.exit(1)
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
+        process.terminate()
+        process.wait()
         sys.exit(1)
     except Exception as e:
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         print("Please report this issue to the developers.")
         sys.exit(1)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
+        print(f"\nTemporary file not deleted: {temp_message_file.name}")
 
 def interactive_mode(args, file_contents):
     print("Entering interactive mode. Instructions:")
