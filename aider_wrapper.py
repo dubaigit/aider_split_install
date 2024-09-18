@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import select
 import git
+import re
 
 def read_file_content(filename):
     with open(filename, 'r') as file:
@@ -180,6 +181,29 @@ def enhance_user_experience():
     for i in tqdm(range(10), desc="Preparing environment"):
         time.sleep(0.1)
 
+def handle_aider_prompts(process):
+    while True:
+        line = process.stdout.readline()
+        if not line:
+            break
+        
+        print(line, end='')  # Print the line for user visibility
+        
+        # Handle file prompts
+        if re.search(r'Add .+ to the chat\? \(Y\)es/\(N\)o \[Yes\]:', line):
+            process.stdin.write('Y\n')
+            process.stdin.flush()
+        
+        # Handle multi-link prompts
+        elif 'Add URL to the chat? (Y)es/(N)o/(A)ll/(S)kip all [Yes]:' in line:
+            process.stdin.write('S\n')
+            process.stdin.flush()
+        
+        # Handle single link prompts
+        elif 'Add URL to the chat? (Y)es/(N)o [Yes]:' in line:
+            process.stdin.write('N\n')
+            process.stdin.flush()
+
 def main():
     parser = argparse.ArgumentParser(description="Wrapper for aider command")
     parser.add_argument("-i", "--instructions", required=True, help="File containing instructions")
@@ -243,29 +267,19 @@ def main():
     print("\nExecuting aider command:")
     print(" ".join(aider_command))
 
-    # Execute the aider command with improved error handling
+    # Execute the aider command with improved error handling and prompt management
     try:
-        process = subprocess.Popen(aider_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        process = subprocess.Popen(aider_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, universal_newlines=True, bufsize=1)
 
-        # Use select to handle both stdout and stderr
-        while True:
-            reads = [process.stdout.fileno(), process.stderr.fileno()]
-            ret = select.select(reads, [], [])
+        handle_aider_prompts(process)
 
-            for fd in ret[0]:
-                if fd == process.stdout.fileno():
-                    read = process.stdout.readline()
-                    sys.stdout.write(read)
-                    sys.stdout.flush()
-                if fd == process.stderr.fileno():
-                    read = process.stderr.readline()
-                    sys.stderr.write(read)
-                    sys.stderr.flush()
+        # Handle remaining output
+        for line in process.stdout:
+            print(line, end='')
+        for line in process.stderr:
+            print(line, end='', file=sys.stderr)
 
-            if process.poll() != None:
-                break
-
-        rc = process.poll()
+        rc = process.wait()
         if rc != 0:
             raise subprocess.CalledProcessError(rc, aider_command)
     except subprocess.CalledProcessError as e:
