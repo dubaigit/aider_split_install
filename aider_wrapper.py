@@ -230,7 +230,6 @@ def main():
         "--no-pretty",
         "--dark-mode",
         "--yes",
-        "--always-yes",
         "--chat-mode", args.chat_mode,
         "--message-file", temp_message_file.name,
     ]
