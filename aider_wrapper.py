@@ -200,14 +200,11 @@ def enhance_user_experience():
 
 def get_clipboard_content():
     """
-    Get content from clipboard and wait for user input.
+    Get content directly from clipboard without waiting.
     """
     if pyperclip is None:
         print("Error: Clipboard functionality is not available.")
-        print("Please enter the content manually:")
-        return input().strip()
-    print("Clipboard content will be used. Press Enter when ready...")
-    input().strip()  # Strip any trailing whitespace from input
+        sys.exit(1)
     try:
         content = pyperclip.paste()
         # Normalize all line endings to \n and remove any duplicate line endings
@@ -217,8 +214,7 @@ def get_clipboard_content():
         return content.strip()
     except Exception as e:
         print(f"Error accessing clipboard: {e}")
-        print("Please enter the content manually:")
-        return input().strip()
+        sys.exit(1)
 
 def handle_aider_prompts(process):
     while True:
@@ -226,7 +222,7 @@ def handle_aider_prompts(process):
         for stream in ready:
             line = stream.readline()
             if not line:
-                return
+                sys.exit(0)  # Exit when processing is complete
 
             print(line, end='', flush=True)  # Print the line for user visibility
 
