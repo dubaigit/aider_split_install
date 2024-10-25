@@ -207,11 +207,13 @@ def get_clipboard_content():
         print("Please enter the content manually:")
         return input().strip()
     print("Clipboard content will be used. Press Enter when ready...")
-    input()
+    input().strip()  # Strip any trailing whitespace from input
     try:
         content = pyperclip.paste()
-        # Strip any carriage returns and normalize line endings
+        # Normalize all line endings to \n and remove any duplicate line endings
         content = content.replace('\r\n', '\n').replace('\r', '\n')
+        while '\n\n\n' in content:
+            content = content.replace('\n\n\n', '\n\n')
         return content.strip()
     except Exception as e:
         print(f"Error accessing clipboard: {e}")
