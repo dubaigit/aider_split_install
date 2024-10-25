@@ -4,10 +4,30 @@ import argparse
 import subprocess
 import tempfile
 import select
-import git
 import re
-import pyperclip
 import shutil
+import time
+
+git = None
+pyperclip = None
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    print("Warning: tqdm module not found. Progress bar functionality will be disabled.")
+    tqdm = None
+
+try:
+    import git
+except ImportError:
+    print("Warning: git module not found. Git functionality will be disabled.")
+    git = None
+
+try:
+    import pyperclip
+except ImportError:
+    print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
+    pyperclip = None
 
 def read_file_content(filename):
     with open(filename, 'r') as file:
@@ -15,7 +35,8 @@ def read_file_content(filename):
 
 def create_message_content(instructions, file_contents):
     existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
-    prompt = """You are Claude Dev, a highly skilled software development assistant with extensive knowledge in many programming languages, frameworks, design patterns, and best practices. You can seamlessly switch between multiple specialized roles to provide comprehensive assistance in various aspects of software development. When switching roles, always announce the change explicitly to ensure clarity.
+    prompt = '''
+    You are Claude Dev, a highly skilled software development assistant with extensive knowledge in many programming languages, frameworks, design patterns, and best practices. You can seamlessly switch between multiple specialized roles to provide comprehensive assistance in various aspects of software development. When switching roles, always announce the change explicitly to ensure clarity.
 
 ## Capabilities
 
@@ -104,35 +125,36 @@ Here are the *SEARCH/REPLACE* blocks:
 
 ```
 hello.py
-&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
+<<<<<<< SEARCH.
 =======
 def hello():
     "print a greeting"
 
     print("hello")
-&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE
+>>>>>>> REPLACE.
 ```
 
 ```
 main.py
-&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH.
+<<<<<<< SEARCH.
 def hello():
     "print a greeting"
 
     print("hello")
 =======
 from hello import hello
-&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE
+>>>>>>> REPLACE.
 ```
 
 ## *SEARCH/REPLACE block* Rules
 
 1. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
-2. The start of the search block: &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH.
+2. The start of the search block: <<<<<<< SEARCH.
 3. A contiguous chunk of lines to search for in the existing source code.
 4. The dividing line: =======.
 5. The lines to replace into the source code.
-6. The end of the replace block: &gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE.
+6. The end of the replace block: >>>>>>> REPLACE.
+7. The closing fence: >>>>>>> REPLACE.
 
 Use the *FULL* file path, as shown to you by the user.
 
@@ -141,7 +163,6 @@ If the file contains code or other data wrapped/escaped in json/xml/quotes or ot
 
 *SEARCH/REPLACE* blocks will replace *all* matching occurrences.
 Include enough lines to make the SEARCH blocks uniquely match the lines to change.
-
 Keep *SEARCH/REPLACE* blocks concise.
 Break large *SEARCH/REPLACE* blocks into a series of smaller blocks that each change a small portion of the file.
 Include just the changing lines, and a few surrounding lines if needed for uniqueness.
@@ -149,36 +170,30 @@ Do not include long runs of unchanging lines in *SEARCH/REPLACE* blocks.
 
 Only create *SEARCH/REPLACE* blocks for files that the user has added to the chat!
 
+To move code within a file, use 2 *SEARCH/REPLACE* blocks: 1 to delete it from its current location, 1 to insert it in the new location.
+
+Pay attention to which filenames the user wants you to edit, especially if they are asking you to create a new file.
+
 If you want to put code in a new file, use a *SEARCH/REPLACE* block with:
 - A new file path, including dir name if needed.
 - An empty `SEARCH` section.
 - The new file's contents in the `REPLACE` section.
 
-Inputs:
-1. Task problem_description
-<task_description>
-{task}
-</task_description>
+    ###Task problem_description
+    <task_description>
+    {task}
+    </task_description>
 
-2. Existing filename(s) (if any):
-<existing_code>
-{file_content}
-</existing_code>
-
-## Reminder
-Always remember to announce when switching between specialized roles for clarity NEVER FORGET.
-"""
-    content = f"{prompt}\n\n<problem_description>\n{instructions}\n</problem_description>\n\n<existing_code>\n{existing_code}\n</existing_code>"
+'''
+    content = f"{prompt}\n\n<problem_description>\n{instructions}\n</problem_description>"
     return content
-
-
 
 def enhance_user_experience():
     """
     Enhance user experience with a progress bar and better error handling.
     """
-    from tqdm import tqdm
-    import time
+    if tqdm is None:
+        return
 
     for i in tqdm(range(10), desc="Preparing environment"):
         time.sleep(0.1)
@@ -187,9 +202,18 @@ def get_clipboard_content():
     """
     Get content from clipboard and wait for user input.
     """
+    if pyperclip is None:
+        print("Error: Clipboard functionality is not available.")
+        print("Please enter the content manually:")
+        return input().strip()
     print("Clipboard content will be used. Press Enter when ready...")
     input()
-    return pyperclip.paste()
+    try:
+        return pyperclip.paste()
+    except Exception as e:
+        print(f"Error accessing clipboard: {e}")
+        print("Please enter the content manually:")
+        return input().strip()
 
 def handle_aider_prompts(process):
     while True:
@@ -198,19 +222,19 @@ def handle_aider_prompts(process):
             line = stream.readline()
             if not line:
                 return
-            
+
             print(line, end='', flush=True)  # Print the line for user visibility
-            
+
             # Handle file prompts
             if re.search(r'Add .+ to the chat\? \(Y\)es/\(N\)o \[Yes\]:', line):
                 process.stdin.write('Y\n')
                 process.stdin.flush()
-            
+
             # Handle multi-link prompts
             elif 'Add URL to the chat? (Y)es/(N)o/(A)ll/(S)kip all [Yes]:' in line:
                 process.stdin.write('S\n')
                 process.stdin.flush()
-            
+
             # Handle single link prompts
             elif 'Add URL to the chat? (Y)es/(N)o [Yes]:' in line:
                 process.stdin.write('N\n')
@@ -221,16 +245,17 @@ def main():
     parser.add_argument("-i", "--instructions", help="File containing instructions")
     parser.add_argument("-c", "--clipboard", action="store_true", help="Use clipboard content as instructions")
     parser.add_argument("filenames", nargs='*', help="Filenames to process")
-    parser.add_argument("--model", default="openrouter/anthropic/claude-3.5-sonnet", help="Model to use for aider")
+    parser.add_argument("--model", default="openai/o1-preview", help="Model to use for aider")
     parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
+    parser.add_argument("--suggest-shell-commands", action="store_true", help="Suggest shell commands while running aider")
 
     args = parser.parse_args()
 
     if args.clipboard and args.instructions:
-        print("Error: Cannot use both clipboard and instruction file. Choose one option.")
-        sys.exit(1)
+        parser.error("Cannot use both clipboard and instruction file. Choose one option.")
 
     if not args.clipboard and not args.instructions:
+        parser.error("Must specify either clipboard (-c) or instruction file (-i).")
         print("Error: Must specify either clipboard (-c) or instruction file (-i).")
         sys.exit(1)
 
@@ -241,19 +266,23 @@ def main():
     print(f"Model: {args.model}")
     print(f"Dark mode: Enabled")
     print(f"Chat mode: {args.chat_mode}")
+    print(f"Suggest shell commands: {args.suggest_shell_commands}")
 
     enhance_user_experience()
 
     # Add git commit before running aider
-    try:
-        repo = git.Repo(search_parent_directories=True)
-        repo.git.add(update=True)
-        repo.index.commit("Auto-commit before running aider")
-        print("Git commit created successfully.")
-    except git.exc.InvalidGitRepositoryError:
-        print("Warning: Not a git repository. Skipping git commit.")
-    except Exception as e:
-        print(f"Error creating git commit: {e}")
+    if git is not None:
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            repo.git.add(update=True)
+            repo.index.commit("Auto-commit before running aider")
+            print("Git commit created successfully.")
+        except git.exc.InvalidGitRepositoryError:
+            print("Warning: Not a git repository. Skipping git commit.")
+        except Exception as e:
+            print(f"Error creating git commit: {e}")
+    else:
+        print("Warning: Git functionality is disabled. Skipping git commit.")
 
     # Get instructions content
     if args.clipboard:
@@ -267,11 +296,15 @@ def main():
     # Create message content
     message_content = create_message_content(instructions, file_contents)
 
-    # Write message content to a temporary file in /tmp
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, prefix='aider_wrapper_', suffix='.txt', dir='/tmp') as temp_message_file:
+    # Write message content to a temporary file
+    temp_message_file = tempfile.NamedTemporaryFile(mode='w', delete=False, prefix='aider_wrapper_', suffix='.txt')
+    try:
         temp_message_file.write(message_content)
-
-    print(f"Temporary message file: {temp_message_file.name}")
+        temp_message_file.close()
+        print(f"Temporary message file: {temp_message_file.name}")
+    except IOError as e:
+        print(f"Error writing to temporary file: {e}")
+        sys.exit(1)
 
     # Modify the aider command construction
     aider_command = [
@@ -279,9 +312,13 @@ def main():
         "--no-pretty",
         "--dark-mode",
         "--yes",
+        "--editor-model o1-mini",
         "--chat-mode", args.chat_mode,
         "--message-file", temp_message_file.name,
     ]
+
+    if args.suggest_shell_commands:
+        aider_command.append("--suggest-shell-commands")
 
     # Add the model argument separately
     if args.model:
@@ -316,9 +353,18 @@ def main():
         sys.exit(1)
 
     # Move the temporary file to the current directory
-    new_file_path = os.path.join(os.getcwd(), os.path.basename(temp_message_file.name))
-    shutil.move(temp_message_file.name, new_file_path)
-    print(f"\nTemporary file moved to: {new_file_path}")
+    try:
+        new_file_path = os.path.join(os.getcwd(), os.path.basename(temp_message_file.name))
+        shutil.move(temp_message_file.name, new_file_path)
+        print(f"\nTemporary file moved to: {new_file_path}")
+    except IOError as e:
+        print(f"Error moving temporary file: {e}")
+    finally:
+        # Ensure the temporary file is removed even if moving fails
+        try:
+            os.unlink(temp_message_file.name)
+        except OSError:
+            pass
 
 if __name__ == "__main__":
     main()
