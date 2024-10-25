@@ -248,6 +248,7 @@ def main():
     parser.add_argument("filenames", nargs='*', help="Filenames to process")
     parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
     parser.add_argument("--suggest-shell-commands", action="store_true", help="Suggest shell commands while running aider")
+    parser.add_argument("--model", help="Model to use for aider")
 
     args = parser.parse_args()
 
