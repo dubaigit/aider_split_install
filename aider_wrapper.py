@@ -209,7 +209,10 @@ def get_clipboard_content():
     print("Clipboard content will be used. Press Enter when ready...")
     input()
     try:
-        return pyperclip.paste()
+        content = pyperclip.paste()
+        # Strip any carriage returns and normalize line endings
+        content = content.replace('\r\n', '\n').replace('\r', '\n')
+        return content.strip()
     except Exception as e:
         print(f"Error accessing clipboard: {e}")
         print("Please enter the content manually:")
