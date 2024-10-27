@@ -1804,24 +1804,3 @@ if __name__ == "__main__":
                     
         except Exception as e:
             print(f"Error during cleanup: {e}")
-    def add_files(self, file_paths):
-        """Add files to the assistant for analysis."""
-        added_files = []
-        for file in file_paths:
-            content = self.read_file_content(file)
-            if content is not None:
-                self.interface_state['files'][file] = content
-                self.files_listbox.insert(tk.END, file)
-                self.log_message(f"Added file: {file}")
-                added_files.append(file)
-        return {"status": "success", "added_files": added_files}
-
-    async def check_issues(self):
-        """Check the added files for issues."""
-        await self.check_all_issues()
-        return {"status": "success"}
-
-    def list_files(self):
-        """List all currently added files."""
-        files = list(self.interface_state['files'].keys())
-        return {"status": "success", "files": files}
