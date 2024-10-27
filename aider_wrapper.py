@@ -915,7 +915,7 @@ class AiderVoiceGUI:
                 else:
                     self.log_message(f"Failed to connect after {max_retries} attempts: {e}")
                     self.stop_voice_control()
-                    raise ConnectionError from e
+                    return False
 
         self.log_message("Failed to connect after all retries")
         self.stop_voice_control()
