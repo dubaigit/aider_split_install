@@ -360,33 +360,104 @@ class TestWebSocketManager(unittest.TestCase):
         """Set up test environment"""
         self.parent = MagicMock()
         self.manager = WebSocketManager(self.parent)
+        self.mock_ws = AsyncMock()
+        self.mock_ws.ping = AsyncMock()
+        self.parent.ws = self.mock_ws
 
     def test_init(self):
         """Test initialization"""
         self.assertEqual(self.manager.connection_state, "disconnected")
         self.assertEqual(self.manager.reconnect_attempts, 0)
         self.assertEqual(self.manager.max_reconnect_attempts, 5)
+        self.assertEqual(self.manager.ping_interval, 30)
 
-    def test_attempt_reconnect(self):
-        """Test reconnection attempts"""
-        # Mock the connect_websocket coroutine
+    async def test_check_connection_success(self):
+        """Test successful connection check"""
+        self.manager.connection_state = "connected"
+        await self.manager.check_connection()
+        self.mock_ws.ping.assert_called_once()
+        self.assertEqual(self.manager.connection_state, "connected")
+
+    async def test_check_connection_failure(self):
+        """Test connection check failure"""
+        self.manager.connection_state = "connected"
+        self.mock_ws.ping.side_effect = websockets.exceptions.WebSocketException()
+        await self.manager.check_connection()
+        self.assertEqual(self.manager.connection_state, "disconnected")
+
+    async def test_monitor_connection(self):
+        """Test connection monitoring"""
+        self.manager.check_connection = AsyncMock()
+        self.manager.attempt_reconnect = AsyncMock()
+        
+        # Test monitoring connected state
+        self.manager.connection_state = "connected"
+        self.manager.last_ping_time = 0
+        monitor_task = asyncio.create_task(self.manager.monitor_connection())
+        
+        await asyncio.sleep(0.1)
+        self.manager.check_connection.assert_called()
+        
+        # Test monitoring disconnected state
+        self.manager.connection_state = "disconnected"
+        await asyncio.sleep(0.1)
+        self.manager.attempt_reconnect.assert_called()
+        
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
+
+    async def test_attempt_reconnect_success(self):
+        """Test successful reconnection attempt"""
         async def mock_connect():
             return True
         self.parent.connect_websocket = mock_connect
         
-        async def run_test():
-            await self.manager.attempt_reconnect()
-            self.assertEqual(self.manager.connection_state, "connected")
-            self.assertEqual(self.manager.reconnect_attempts, 0)
+        await self.manager.attempt_reconnect()
+        self.assertEqual(self.manager.connection_state, "connected")
+        self.assertEqual(self.manager.reconnect_attempts, 0)
 
-        # Create and run event loop
+    async def test_attempt_reconnect_failure(self):
+        """Test failed reconnection attempt"""
+        async def mock_connect():
+            raise websockets.exceptions.WebSocketException()
+        self.parent.connect_websocket = mock_connect
+        
+        await self.manager.attempt_reconnect()
+        self.assertEqual(self.manager.connection_state, "disconnected")
+        self.assertEqual(self.manager.reconnect_attempts, 1)
+
+    async def test_max_reconnect_attempts(self):
+        """Test maximum reconnection attempts"""
+        self.manager.reconnect_attempts = self.manager.max_reconnect_attempts
+        await self.manager.attempt_reconnect()
+        self.parent.log_message.assert_called_with("❌ Max reconnection attempts reached")
+
+    def run_async_test(self, coro):
+        """Helper method to run async tests"""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(run_test())
+            return loop.run_until_complete(coro)
         finally:
             loop.close()
             asyncio.set_event_loop(None)
+
+    def test_check_connection_sync(self):
+        """Test check_connection using sync wrapper"""
+        self.run_async_test(self.test_check_connection_success())
+        self.run_async_test(self.test_check_connection_failure())
+
+    def test_monitor_connection_sync(self):
+        """Test monitor_connection using sync wrapper"""
+        self.run_async_test(self.test_monitor_connection())
+
+    def test_attempt_reconnect_sync(self):
+        """Test attempt_reconnect using sync wrapper"""
+        self.run_async_test(self.test_attempt_reconnect_success())
+        self.run_async_test(self.test_attempt_reconnect_failure())
 
 class TestClipboardManager(unittest.TestCase):
     def setUp(self):
