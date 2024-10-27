@@ -1052,12 +1052,12 @@ class AiderVoiceGUI:
                     self.log_message(f"Retry {attempt + 1}/{max_retries}: {e}")
                     await asyncio.sleep(1)
                     
-        except ValueError as e:
-            self.log_message(f"❌ Command validation error: {e}")
-            self.interface_state['command_history'][-1]['status'] = 'failed'
-            self.interface_state['command_history'][-1]['error'] = str(e)
         except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
             self.log_message(f"❌ Command processing error: {e}")
+            self.interface_state['command_history'][-1]['status'] = 'failed'
+            self.interface_state['command_history'][-1]['error'] = str(e)
+        except ValueError as e:
+            self.log_message(f"❌ Command validation error: {e}")
             self.interface_state['command_history'][-1]['status'] = 'failed'
             self.interface_state['command_history'][-1]['error'] = str(e)
 
