@@ -1,10 +1,5 @@
 import os
-import sys
 import argparse
-import subprocess
-import tempfile
-import select
-import re
 import time
 from queue import Queue, Empty
 import json
@@ -14,6 +9,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog
 import pyaudio
+from contextlib import contextmanager
 
 # Optional imports with fallbacks
 try:
@@ -96,7 +92,7 @@ class AudioBufferManager:
             return b''.join(chunks)
         except Exception as e:
             self.stats['drops'] += 1
-            raise AudioProcessingError(f"Error combining chunks: {e}")
+            raise AudioProcessingError(f"Error combining chunks: {e}") from e
             
     def get_usage(self):
         """Get current buffer usage ratio"""
@@ -131,6 +127,16 @@ class PerformanceMonitor:
     def reset(self):
         """Reset all metrics"""
         self.metrics = {m: [] for m in self.metrics}
+        
+    @contextmanager
+    def measure(self, metric):
+        """Context manager to measure execution time of a block"""
+        start = time.time()
+        try:
+            yield
+        finally:
+            duration = time.time() - start
+            self.update(metric, duration)
 
 class KeyboardShortcuts:
     """Manages keyboard shortcuts"""
@@ -446,7 +452,9 @@ class AiderVoiceGUI:
         
         # Initialize audio components
         self.p = pyaudio.PyAudio()
-        self.audio_buffer = bytearray()  # Changed from bytes to bytearray
+        self.audio_buffer = bytearray()
+        self.mic_stream = None
+        self.spkr_stream = None
         self.mic_queue = Queue()
         self.mic_on_at = 0
         self.mic_active = False
@@ -814,6 +822,66 @@ class AiderVoiceGUI:
                 await asyncio.sleep(1)
                 continue
     
+    def log_message(self, message):
+        """Log a message to the output text area"""
+        if hasattr(self, 'output_text'):
+            self.output_text.insert(tk.END, f"{message}\n")
+            self.output_text.see(tk.END)
+
+    def browse_files(self):
+        """Open file browser dialog to select files"""
+        files = filedialog.askopenfilenames()
+        for file in files:
+            if file not in self.interface_state['files']:
+                self.interface_state['files'][file] = None
+                self.files_listbox.insert(tk.END, file)
+
+    def check_all_issues(self):
+        """Check all files for issues"""
+        self.issues_text.delete('1.0', tk.END)
+        for file in self.interface_state['files']:
+            # Add your issue checking logic here
+            self.log_message(f"Checking {file} for issues...")
+
+    def remove_selected_file(self):
+        """Remove selected file from listbox"""
+        selection = self.files_listbox.curselection()
+        if selection:
+            file = self.files_listbox.get(selection)
+            self.files_listbox.delete(selection)
+            del self.interface_state['files'][file]
+
+    def use_clipboard_content(self):
+        """Load clipboard content into input text"""
+        if pyperclip:
+            content = pyperclip.paste()
+            self.input_text.delete('1.0', tk.END)
+            self.input_text.insert('1.0', content)
+
+    def send_input_text(self):
+        """Send input text content to processing"""
+        content = self.input_text.get('1.0', tk.END).strip()
+        if content:
+            self.log_message("Processing input...")
+            # Add your processing logic here
+
+    def update_transcription(self, text, is_assistant=False):
+        """Update transcription text area with new text"""
+        prefix = "🤖 " if is_assistant else "🎤 "
+        self.transcription_text.insert(tk.END, f"{prefix}{text}\n")
+        self.transcription_text.see(tk.END)
+
+    async def _send_audio_chunk(self, chunk):
+        """Send audio chunk to websocket"""
+        if self.ws and chunk:
+            try:
+                await self.ws.send(json.dumps({
+                    'type': 'input_audio_buffer.append',
+                    'audio': base64.b64encode(chunk).decode('utf-8')
+                }))
+            except Exception as e:
+                self.log_message(f"Error sending audio chunk: {e}")
+
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
         command_processor = VoiceCommandProcessor(self)
