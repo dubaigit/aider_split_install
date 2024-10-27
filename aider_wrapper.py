@@ -64,7 +64,7 @@ SAMPLE_RATE = 24000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 REENGAGE_DELAY_MS = 500
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/realtime"
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
 
 class AiderVoiceGUI:
     def __init__(self, root):
@@ -421,12 +421,12 @@ class AiderVoiceGUI:
                     "OpenAI-Beta": "realtime=v1"
                 }
             )
-            
+        
             # Initialize session with correct configuration
             await self.ws.send(json.dumps({
-                "type": "session.update",
+                "type": "session.create",
                 "session": {
-                    "model": "gpt-4",
+                    "model": "gpt-4-1106-preview",
                     "voice": "alloy",
                     "turn_detection": {
                         "type": "server_vad",
@@ -582,14 +582,11 @@ class AiderVoiceGUI:
         
         # Send the command to the assistant
         await self.ws.send(json.dumps({
-            "type": "conversation.item.create",
-            "item": {
-                "type": "message",
+            "type": "message.create",
+            "message": {
                 "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": text
-                }]
+                "content": text,
+                "voice": "alloy"
             }
         }))
         
