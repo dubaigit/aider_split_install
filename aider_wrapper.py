@@ -15,6 +15,17 @@ import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog  # Added filedialog import
 import pyaudio
+import pty
+import fcntl
+import termios
+import struct
+import pty
+import tty
+import atexit
+import subprocess
+from queue import Queue
+from threading import Thread
+import errno
 
 # Optional imports with fallbacks
 try:
@@ -169,6 +180,7 @@ class AiderVoiceGUI:
         self.right_panel.columnconfigure(0, weight=1)
         self.right_panel.rowconfigure(0, weight=1)
         self.right_panel.rowconfigure(1, weight=1)
+        self.right_panel.rowconfigure(2, weight=1)  # Terminal takes remaining space
         
         # Create file list frame
         self.files_frame = ttk.LabelFrame(self.left_panel, text="Added Files", padding="5")
@@ -248,6 +260,52 @@ class AiderVoiceGUI:
             "last_command": None,
             "last_response": None
         }
+        
+        # Create terminal frame
+        self.terminal_frame = ttk.LabelFrame(self.right_panel, text="Terminal", padding="5")
+        self.terminal_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        # Create terminal text widget with dark theme
+        self.terminal = scrolledtext.ScrolledText(
+            self.terminal_frame,
+            height=10,
+            bg='black',
+            fg='white',
+            insertbackground='white',
+            font=('Courier', 10)
+        )
+        self.terminal.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create terminal input frame
+        self.terminal_input_frame = ttk.Frame(self.terminal_frame)
+        self.terminal_input_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        
+        # Add prompt label
+        self.prompt_label = ttk.Label(self.terminal_input_frame, text="$ ")
+        self.prompt_label.grid(row=0, column=0, padx=2)
+        
+        # Add terminal input
+        self.terminal_input = ttk.Entry(self.terminal_input_frame)
+        self.terminal_input.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=2)
+        self.terminal_input.bind('<Return>', self.execute_command)
+        
+        # Add execute button
+        self.execute_button = ttk.Button(
+            self.terminal_input_frame,
+            text="Run",
+            command=lambda: self.execute_command(None)
+        )
+        self.execute_button.grid(row=0, column=2, padx=2)
+        
+        # Configure terminal frame weights
+        self.terminal_frame.columnconfigure(0, weight=1)
+        self.terminal_frame.rowconfigure(0, weight=1)
+        self.terminal_input_frame.columnconfigure(1, weight=1)
+        
+        # Initialize terminal process
+        self.terminal_queue = Queue()
+        self.terminal_running = True
+        self.start_terminal()
         
         # Rest of initialization...
 
@@ -400,25 +458,43 @@ class AiderVoiceGUI:
             files_context = "\n".join([f"- {os.path.basename(f)}" for f in self.added_files])
             instructions = f"""
             You are an AI assistant that helps control the aider code assistant through voice commands.
+            You have full access to execute any bash command in the terminal.
             
             Currently added files:
             {files_context or "No files added yet"}
             
-            Commands you understand:
-            - Run aider with clipboard content
-            - Add files to aider (from current directory)
-            - Check for issues and send to aider
-            - Summarize what happened when aider finishes
-            - List current files
-            - Remove file <filename>
-            - Clear all files
+            You can:
+            1. Execute any bash command by:
+               - Understanding the user's intent
+               - Running appropriate commands
+               - Analyzing the output
+               - Suggesting next steps
             
-            Always confirm what action you're taking and provide clear feedback.
-            Keep track of the files that have been added and removed.
-            When checking for issues, focus on the currently added files.
+            2. Manage files:
+               - Add/remove files
+               - Check issues
+               - Analyze code
+               - Handle clipboard content
             
-            Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
-            Talk quickly and be engaging with a lively tone.
+            3. Use the terminal for:
+               - Navigation (cd, ls, pwd)
+               - File operations (cp, mv, rm)
+               - Package management (pip, npm)
+               - Git operations
+               - Any other bash command
+            
+            Always:
+            1. Confirm what action you're taking
+            2. Provide clear feedback
+            3. Handle errors gracefully
+            4. Suggest related commands
+            5. Monitor command output
+            
+            Keep track of:
+            - Current directory
+            - Command history
+            - File states
+            - Process status
             """
             
             # Initialize session with correct configuration
@@ -533,38 +609,94 @@ class AiderVoiceGUI:
     async def process_voice_command(self, text):
         """Process transcribed voice commands"""
         self.log_message(f"Processing command: {text}")
-        self.current_context["last_command"] = text
         
-        # Read content of all added files
+        # Handle bash commands
+        if any(cmd in text.lower() for cmd in ["run", "execute", "bash", "terminal", "command"]):
+            # Extract the command part after any of these trigger words
+            for trigger in ["run", "execute", "bash", "terminal", "command"]:
+                if trigger in text.lower():
+                    command = text.lower().split(trigger, 1)[1].strip()
+                    if command:
+                        self.log_message(f"Executing command: {command}")
+                        self.execute_terminal_command(command)
+                        return
+        
+        # Handle file management commands
+        if "list files" in text.lower():
+            files = list(self.added_files)
+            if files:
+                response = "Currently added files:\n" + "\n".join([f"- {os.path.basename(f)}" for f in files])
+            else:
+                response = "No files are currently added."
+            await self.send_audio_response(response)
+            return
+            
+        elif "check issues" in text.lower() or "analyze issues" in text.lower():
+            await self.analyze_and_check_issues()
+            return
+            
+        elif "analyze files" in text.lower():
+            await self.analyze_current_files()
+            return
+            
+        elif "clear files" in text.lower():
+            self.clear_files()
+            await self.send_audio_response("All files have been cleared.")
+            return
+            
+        elif "remove file" in text.lower():
+            filename = text.lower().split("remove file")[-1].strip()
+            if filename:
+                self.remove_file_by_name(filename)
+            else:
+                await self.send_audio_response("Please specify which file to remove.")
+            return
+        
+        # If no specific command matched, try to execute as a bash command
+        try:
+            self.execute_terminal_command(text)
+        except Exception as e:
+            await self.send_audio_response(f"I couldn't understand that command. Error: {e}")
+
+    def remove_file_by_name(self, filename):
+        """Remove a file by its name"""
+        for file_path in list(self.added_files):
+            if filename in os.path.basename(file_path).lower():
+                self.added_files.remove(file_path)
+                self.current_context["files"].remove(file_path)
+                # Update listbox
+                for i in range(self.files_list.size()):
+                    if self.files_list.get(i).lower() == os.path.basename(file_path).lower():
+                        self.files_list.delete(i)
+                        break
+                self.log_message(f"Removed file: {file_path}")
+                asyncio.run_coroutine_threadsafe(
+                    self.send_audio_response(f"Removed {os.path.basename(file_path)}"),
+                    self.loop
+                )
+                return
+        asyncio.run_coroutine_threadsafe(
+            self.send_audio_response(f"Could not find file matching '{filename}'"),
+            self.loop
+        )
+
+    async def analyze_current_files(self):
+        """Analyze currently added files"""
+        if not self.added_files:
+            await self.send_audio_response("No files are currently added. Please add some files first.")
+            return
+            
         files_content = {}
-        for file_path in self.current_context["files"]:
+        for file_path in self.added_files:
             try:
                 with open(file_path, 'r') as f:
-                    files_content[file_path] = f.read()
+                    files_content[os.path.basename(file_path)] = f.read()
             except Exception as e:
                 self.log_message(f"Error reading file {file_path}: {e}")
+                continue
         
-        # Add file contents to AI context
-        await self.update_ai_context(files_content)
-        
-        if "analyze" in text.lower() or "understand" in text.lower():
-            # Analyze files
-            await self.analyze_files(files_content)
-            
-        elif "check issues" in text.lower():
-            # Run checks and analyze issues
-            await self.analyze_and_check_issues()
-            
-        elif "clipboard" in text.lower():
-            # Analyze clipboard content with context
-            await self.analyze_clipboard_content(files_content)
-            
-        # ... rest of the command handling
-
-    async def analyze_files(self, files_content):
-        """Have AI analyze the files"""
         if not files_content:
-            await self.send_audio_response("No files are currently added. Please add some files first.")
+            await self.send_audio_response("Could not read any of the added files.")
             return
             
         analysis_prompt = f"""
@@ -583,39 +715,47 @@ class AiderVoiceGUI:
         await self.send_ai_analysis(analysis_prompt)
 
     async def analyze_and_check_issues(self):
-        """Run checks and have AI analyze the issues"""
+        """Run checks and analyze issues"""
+        if not self.added_files:
+            await self.send_audio_response("No files are currently added. Please add some files first.")
+            return
+            
         self.issues_text.delete('1.0', tk.END)
-        self.issues_text.insert(tk.END, "Running checks and analyzing...\n\n")
+        self.issues_text.insert(tk.END, "Running checks...\n\n")
         
         issues = []
         
-        # Run ruff
+        # Run ruff on specific files
         try:
             ruff_result = subprocess.run(
-                ["ruff", "check", "."],
+                ["ruff", "check"] + list(self.added_files),
                 capture_output=True,
                 text=True
             )
-            issues.append(("Ruff", ruff_result.stdout))
+            issues.append(("Ruff", ruff_result.stdout or "No issues found!"))
         except Exception as e:
             issues.append(("Ruff", f"Error: {e}"))
         
-        # Run mypy
+        # Run mypy on specific files
         try:
             mypy_result = subprocess.run(
-                ["mypy", "."],
+                ["mypy"] + list(self.added_files),
                 capture_output=True,
                 text=True
             )
-            issues.append(("Mypy", mypy_result.stdout))
+            issues.append(("Mypy", mypy_result.stdout or "No issues found!"))
         except Exception as e:
             issues.append(("Mypy", f"Error: {e}"))
+        
+        # Update issues display
+        for tool, output in issues:
+            self.issues_text.insert(tk.END, f"=== {tool} Issues ===\n{output}\n\n")
         
         # Have AI analyze the issues
         analysis_prompt = f"""
         Please analyze these issues and provide a detailed explanation:
         
-        {json.dumps(issues, indent=2)}
+        {json.dumps(dict(issues), indent=2)}
         
         Please provide:
         1. Summary of each type of issue
@@ -1087,165 +1227,260 @@ class AiderVoiceGUI:
         # Also update the log
         self.log_message(f"{prefix}{text}")
 
-def read_file_content(filename):
-    with open(filename, 'r') as file:
-        return file.read()
+    def cleanup_terminal(self):
+        """Clean up terminal resources"""
+        try:
+            self.terminal_running = False
+            if hasattr(self, 'shell') and self.shell:
+                self.shell.terminate()
+                self.shell.wait(timeout=1)
+            if hasattr(self, 'master_fd') and self.master_fd is not None:
+                os.close(self.master_fd)
+            if hasattr(self, 'slave_fd') and self.slave_fd is not None:
+                os.close(self.slave_fd)
+        except Exception as e:
+            self.log_message(f"Error cleaning up terminal: {e}")
 
-def create_message_content(instructions, file_contents):
-    existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
-    prompt = '''
-    You are Claude Dev, a highly skilled software development assistant with extensive knowledge in many programming languages, frameworks, design patterns, and best practices. You can seamlessly switch between multiple specialized roles to provide comprehensive assistance in various aspects of software development. When switching roles, always announce the change explicitly to ensure clarity.
+    def update_terminal_display(self):
+        """Update terminal display from queue"""
+        try:
+            while not self.terminal_queue.empty():
+                output = self.terminal_queue.get_nowait()
+                if output:
+                    self.terminal.insert(tk.END, output)
+                    self.terminal.see(tk.END)
+        except Exception as e:
+            self.log_message(f"Error updating terminal display: {e}")
 
-## Capabilities
+    def start_terminal(self):
+        """Start terminal process"""
+        try:
+            # Initialize terminal state
+            self.terminal_running = True
+            self.terminal_queue = Queue()
+            
+            # Use different approach based on platform
+            if os.name == 'posix':  # Unix/Linux/macOS
+                # Create pseudo-terminal more safely
+                try:
+                    master_fd, slave_fd = pty.openpty()
+                    # Set terminal size
+                    term_size = struct.pack('HHHH', 24, 80, 0, 0)
+                    fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, term_size)
+                    
+                    # Start shell without preexec_fn
+                    self.shell = subprocess.Popen(
+                        ['/bin/bash'],
+                        stdin=slave_fd,
+                        stdout=slave_fd,
+                        stderr=slave_fd,
+                        start_new_session=True,
+                        env=dict(os.environ, TERM='xterm')
+                    )
+                    
+                    # Store file descriptors
+                    self.master_fd = master_fd
+                    self.slave_fd = slave_fd
+                    
+                except Exception as e:
+                    self.log_message(f"Error creating PTY: {e}")
+                    # Fallback to basic pipe-based approach
+                    self.shell = subprocess.Popen(
+                        ['/bin/bash'],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        bufsize=0,
+                        universal_newlines=True
+                    )
+                    self.master_fd = self.shell.stdout.fileno()
+                    self.slave_fd = self.shell.stdin.fileno()
+            
+            else:  # Windows
+                # Use basic pipe-based approach
+                self.shell = subprocess.Popen(
+                    ['cmd.exe'],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=0,
+                    universal_newlines=True
+                )
+                self.master_fd = self.shell.stdout.fileno()
+                self.slave_fd = self.shell.stdin.fileno()
+            
+            # Start output reader thread
+            self.terminal_thread = Thread(
+                target=self.read_terminal_output, 
+                args=(self.master_fd,), 
+                daemon=True
+            )
+            self.terminal_thread.start()
+            
+            # Register cleanup
+            atexit.register(self.cleanup_terminal)
+            
+            # Initial terminal prompt
+            self.terminal.insert(tk.END, f"Terminal started in: {os.getcwd()}\n$ ")
+            
+            self.log_message("Terminal started successfully")
+            
+        except Exception as e:
+            self.log_message(f"Error starting terminal: {e}")
+            # Create dummy terminal for UI
+            self.shell = None
+            self.master_fd = None
+            self.slave_fd = None
 
-### General Software Development
-- Read and analyze code in various programming languages.
-- Analyze the problem and create a list of tasks.
-- After creating the list, use <thinking></thinking> tags to think and see if you need to add or remove any tasks.
-- Work on the tasks one by one, don't skip any.
-- Write clean, efficient, and well-documented code.
-- Debug complex issues and provide detailed explanations.
-- Offer architectural insights and design patterns.
-- Implement best coding practices and standards.
-- After finishing the task, use <thinking></thinking> tags to confirm if the change will fix the problem; if not, repeat the process.
+    def read_terminal_output(self, fd):
+        """Read terminal output in a separate thread"""
+        while self.terminal_running:
+            try:
+                if hasattr(self, 'shell') and self.shell and hasattr(self.shell, 'stdout'):
+                    # Pipe-based reading
+                    output = self.shell.stdout.readline()
+                    if output:
+                        self.terminal_queue.put(output)
+                        self.root.after(0, self.update_terminal_display)
+                elif fd is not None:
+                    # PTY-based reading
+                    output = os.read(fd, 1024)
+                    if output:
+                        try:
+                            decoded = output.decode()
+                            self.terminal_queue.put(decoded)
+                            self.root.after(0, self.update_terminal_display)
+                        except UnicodeDecodeError:
+                            pass
+                else:
+                    time.sleep(0.1)  # Prevent tight loop if no valid output source
+                            
+            except (OSError, IOError) as e:
+                if e.errno != errno.EIO:  # Ignore EIO error
+                    self.log_message(f"Error reading terminal: {e}")
+                break
+            except Exception as e:
+                self.log_message(f"Error in terminal thread: {e}")
+                break
+            
+            time.sleep(0.01)  # Small delay to prevent CPU hogging
 
-### Specialized Roles
+    def execute_command(self, event):
+        """Execute terminal command"""
+        if not hasattr(self, 'shell') or self.shell is None:
+            self.log_message("Terminal not available")
+            return
+            
+        command = self.terminal_input.get().strip()
+        if not command:
+            return
+            
+        # Clear input
+        self.terminal_input.delete(0, tk.END)
+        
+        # Add command to terminal display
+        self.terminal.insert(tk.END, f"$ {command}\n")
+        
+        try:
+            # Special handling for cd command
+            if command.startswith('cd '):
+                try:
+                    os.chdir(command[3:].strip())
+                    self.terminal.insert(tk.END, f"Changed directory to: {os.getcwd()}\n")
+                except Exception as e:
+                    self.terminal.insert(tk.END, f"Error: {e}\n")
+                return
+            
+            # Write command to terminal
+            if hasattr(self.shell, 'stdin'):
+                # Pipe-based writing
+                self.shell.stdin.write(command + '\n')
+                self.shell.stdin.flush()
+            else:
+                # PTY-based writing
+                os.write(self.master_fd, (command + '\n').encode())
+            
+            # Update display
+            self.terminal.see(tk.END)
+            
+        except Exception as e:
+            self.log_message(f"Error executing command: {e}")
 
-#### Expert Debugger
-- Analyze error messages and stack traces.
-- Identify root causes of bugs and performance issues.
-- Suggest efficient debugging strategies.
-- Provide step-by-step troubleshooting instructions.
-- Recommend tools and techniques for effective debugging.
+    def add_to_files_from_terminal(self, filepath):
+        """Add file to aider from terminal path"""
+        if os.path.exists(filepath):
+            self.add_files([filepath])
+        else:
+            self.terminal.insert(tk.END, f"Error: File not found: {filepath}\n")
 
-#### Professional Coder
-- Write optimized, scalable, and maintainable code.
-- Implement complex algorithms and data structures.
-- Refactor existing code for improved performance and readability.
-- Integrate third-party libraries and APIs effectively.
-- Develop unit tests and implement test-driven development practices.
+    def execute_terminal_command(self, command):
+        """Execute any command in terminal and capture output for AI"""
+        try:
+            # Add command to terminal display
+            self.terminal.insert(tk.END, f"$ {command}\n")
+            
+            # Write command to terminal
+            os.write(self.master_fd, (command + '\n').encode())
+            
+            # Wait briefly for output
+            time.sleep(0.2)
+            
+            # Get terminal output
+            output = self.get_terminal_output()
+            
+            # Send output to AI for analysis
+            analysis_prompt = f"""
+            I executed the command: {command}
+            
+            Output:
+            {output}
+            
+            Please analyze the output and provide:
+            1. Summary of what happened
+            2. Any issues or errors
+            3. Suggested next steps or related commands
+            4. Any security concerns if applicable
+            """
+            
+            asyncio.run_coroutine_threadsafe(
+                self.send_ai_analysis(analysis_prompt),
+                self.loop
+            )
+            
+        except Exception as e:
+            self.log_message(f"Error executing terminal command: {e}")
 
-#### Code Reviewer
-- Conduct thorough code reviews for quality and consistency.
-- Identify potential bugs, security vulnerabilities, and performance bottlenecks.
-- Suggest improvements in code structure, naming conventions, and documentation.
-- Ensure adherence to coding standards and best practices.
-- Provide constructive feedback to improve overall code quality.
+    def get_terminal_output(self):
+        """Get accumulated terminal output"""
+        output = self.terminal.get('1.0', tk.END)
+        return output
 
-#### UX/UI Designer
-- Create intuitive and visually appealing user interfaces.
-- Design responsive layouts for various devices and screen sizes.
-- Implement modern design principles and patterns.
-- Suggest improvements for user experience and accessibility.
-- Provide guidance on color schemes, typography, and overall aesthetics.
-
-## Rules
-
-1. Work in your current working directory.
-2. Always provide complete file content in your responses, regardless of the extent of changes.
-3. When creating new projects, organize files within a dedicated project directory unless specified otherwise.
-4. Consider the project type (e.g., Python, JavaScript, web application) when determining appropriate structure and files.
-5. Ensure changes are compatible with the existing codebase and follow project coding standards.
-6. Use markdown freely in your responses, including language-specific code blocks.
-7. Do not start responses with affirmations like "Certainly", "Okay", "Sure", etc. Be direct and to the point.
-8. When switching roles, explicitly mention the role you're assuming for clarity, even repeating this when changing roles or returning to a previous role.
-
-## Code Regeneration Approach
-
-1. Ensure that you maintain the overall structure and logic of the code, unless the changes explicitly modify them.
-2. Pay special attention to proper indentation and formatting throughout the entire file.
-3. If a requested change seems inconsistent or problematic, use your expertise to implement it in the most logical way possible.
-4. Wrap the regenerated code in a Python markdown code block.
-
-## Objective
-
-Accomplish given tasks iteratively, breaking them down into clear steps:
-
-1. Analyze the user's task and set clear, achievable goals.
-2. Prioritize goals in a logical order.
-3. Work through goals sequentially, utilizing your multi-role expertise as needed.
-4. Before taking action, analyze the task within <thinking></thinking> tags:
-   - Determine which specialized role is most appropriate for the current step.
-   - Consider the context and requirements of the task.
-   - Plan your approach using the capabilities of the chosen role.
-5. Execute the planned actions, explicitly mentioning when switching roles for clarity.
-6. Once the task is completed, present the result to the user.
-7. If feedback is provided, use it to make improvements and iterate on the solution.
-
-## Example *SEARCH/REPLACE block*
-
-To make this change, we need to modify `main.py` and create a new file `hello.py`:
-
-1. Make a new `hello.py` file w
-ith `hello()` in it.
-2. Remove `hello()` from `main.py` and replace it with an import.
-
-Here are the *SEARCH/REPLACE* blocks:
-
-```
-hello.py
-<<<<<<< SEARCH.
-=======
-def hello():
-    "print a greeting"
-
-    print("hello")
->>>>>>> REPLACE.
-```
-
-```
-main.py
-<<<<<<< SEARCH.
-def hello():
-    "print a greeting"
-
-    print("hello")
-=======
-from hello import hello
->>>>>>> REPLACE.
-```
-
-## *SEARCH/REPLACE block* Rules
-
-1. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
-2. The start of the search block: <<<<<<< SEARCH.
-3. A contiguous chunk of lines to search for in the existing source code.
-4. The dividing line: =======.
-5. The lines to replace into the source code.
-6. The end of the replace block: >>>>>>> REPLACE.
-7. The closing fence: >>>>>>> REPLACE.
-
-Use the *FULL* file path, as shown to you by the user.
-
-Every *SEARCH* section must *EXACTLY MATCH* the existing file content, character for character, including all comments, docstrings, etc.
-If the file contains code or other data wrapped/escaped in json/xml/quotes or other containers, you need to propose edits to the literal contents of the file, including the container markup.
-
-*SEARCH/REPLACE* blocks will replace *all* matching occurrences.
-Include enough lines to make the SEARCH blocks uniquely match the lines to change.
-Keep *SEARCH/REPLACE* blocks concise.
-Break large *SEARCH/REPLACE* blocks into a series of smaller blocks that each change a small portion of the file.
-Include just the changing lines, and a few surrounding lines if needed for uniqueness.
-Do not include long runs of unchanging lines in *SEARCH/REPLACE* blocks.
-
-Only create *SEARCH/REPLACE* blocks for files that the user has added to the chat!
-
-To move code within a file, use 2 *SEARCH/REPLACE* blocks: 1 to delete it from its current location, 1 to insert it in the new location.
-
-Pay attention to which filenames the user wants you to edit, especially if they are asking you to create a new file.
-
-If you want to put code in a new file, use a *SEARCH/REPLACE* block with:
-- A new file path, including dir name if needed.
-- An empty `SEARCH` section.
-- The new file's contents in the `REPLACE` section.
-
-    ###Task problem_description
-    <task_description>
-    {task}
-    </task_description>
-
-'''
-    content = f"{prompt}\n\n<problem_description>\n{instructions}\n</problem_description>"
-    return content
+    async def send_ai_analysis(self, prompt):
+        """Send analysis request to AI and handle response"""
+        if self.ws:
+            try:
+                await self.ws.send(json.dumps({
+                    "type": "conversation.item.create",
+                    "item": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": prompt
+                        }]
+                    }
+                }))
+                
+                # Create response to generate analysis
+                await self.ws.send(json.dumps({
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["text", "audio"]
+                    }
+                }))
+                
+            except Exception as e:
+                self.log_message(f"Error sending analysis request: {e}")
 
 def enhance_user_experience():
     """
