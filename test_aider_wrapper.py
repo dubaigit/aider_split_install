@@ -245,11 +245,59 @@ class TestAudioBufferManager(unittest.TestCase):
         self.assertEqual(self.buffer_manager.chunk_size, 256)
         self.assertEqual(self.buffer_manager.sample_rate, 24000)
         self.assertEqual(len(self.buffer_manager.buffer), 0)
+        self.assertEqual(self.buffer_manager.stats["drops"], 0)
+        self.assertEqual(self.buffer_manager.stats["overflows"], 0)
 
     def test_get_usage(self):
         """Test buffer usage calculation"""
         self.buffer_manager.buffer = bytearray(512)
         self.assertEqual(self.buffer_manager.get_usage(), 0.5)
+        
+        self.buffer_manager.buffer = bytearray(1024)
+        self.assertEqual(self.buffer_manager.get_usage(), 1.0)
+        
+        self.buffer_manager.buffer = bytearray()
+        self.assertEqual(self.buffer_manager.get_usage(), 0.0)
+
+    def test_get_chunks_empty_queue(self):
+        """Test getting chunks from empty queue"""
+        test_queue = Queue()
+        chunks = self.buffer_manager.get_chunks(test_queue)
+        self.assertEqual(len(chunks), 0)
+
+    def test_get_chunks_with_data(self):
+        """Test getting chunks with valid data"""
+        test_queue = Queue()
+        test_data = [b"test1", b"test2", b"test3"]
+        for data in test_data:
+            test_queue.put(data)
+            
+        chunks = self.buffer_manager.get_chunks(test_queue)
+        self.assertEqual(len(chunks), 3)
+        self.assertEqual(chunks, test_data)
+
+    def test_get_chunks_overflow(self):
+        """Test chunk overflow handling"""
+        test_queue = Queue()
+        # Put data larger than max_size
+        test_queue.put(b"x" * (self.buffer_manager.max_size + 100))
+        
+        chunks = self.buffer_manager.get_chunks(test_queue)
+        self.assertEqual(len(chunks), 0)
+        self.assertEqual(self.buffer_manager.stats["overflows"], 1)
+
+    def test_combine_chunks(self):
+        """Test chunk combination"""
+        test_chunks = [b"test1", b"test2", b"test3"]
+        combined = self.buffer_manager.combine_chunks(test_chunks)
+        self.assertEqual(combined, b"test1test2test3")
+
+    def test_combine_chunks_error(self):
+        """Test error handling in combine_chunks"""
+        test_chunks = [b"test1", None, b"test3"]
+        with self.assertRaises(AudioProcessingError):
+            self.buffer_manager.combine_chunks(test_chunks)
+        self.assertEqual(self.buffer_manager.stats["drops"], 1)
 
 class TestPerformanceMonitor(unittest.TestCase):
     def setUp(self):
