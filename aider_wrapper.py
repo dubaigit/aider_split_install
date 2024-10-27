@@ -508,39 +508,32 @@ class AiderVoiceGUI:
                 
                 event_type = event.get("type")
                 
-                if event_type == "response.text.delta":
-                    text = event.get("delta", {}).get("text", "")
+                if event_type == "message.chunk":
+                    # Handle message chunks from the assistant
+                    chunk = event.get("chunk", {})
+                    text = chunk.get("content", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
-                        # Convert text response to speech
-                        await self.ws.send(json.dumps({
-                            "type": "text_to_speech.generate",
-                            "text": text
-                        }))
+                        self.response_active = True
                 
-                elif event_type == "input_speech_transcription_completed":
-                    text = event.get("transcription", {}).get("text", "")
-                    if text.strip():  # Only process non-empty transcriptions
-                        self.update_transcription(text, is_assistant=False)
-                        await self.process_voice_command(text)
-                
-                elif event_type == "response.audio.delta":
+                elif event_type == "speech.chunk":
+                    # Handle audio chunks from the assistant
                     try:
-                        audio_content = base64.b64decode(event.get('delta', ''))
+                        audio_content = base64.b64decode(event.get('chunk', {}).get('audio', ''))
                         if audio_content:
                             self.audio_buffer.extend(audio_content)
                             self.log_message(f'Received {len(audio_content)} bytes of audio data')
                     except Exception as e:
                         self.log_message(f"Error processing audio response: {e}")
                 
-                elif event_type == "response.audio.done":
+                elif event_type == "speech.done":
                     self.log_message("AI finished speaking")
                     self.response_active = False
                     # Reset mic suppression after a short delay
                     await asyncio.sleep(REENGAGE_DELAY_MS / 1000)
                     self.mic_on_at = time.time()
                 
-                elif event_type == "response.done":
+                elif event_type == "message.done":
                     self.response_active = False
                     status = event.get("status")
                     if status == "incomplete":
@@ -553,6 +546,13 @@ class AiderVoiceGUI:
                         self.log_message("Response completed")
                         # Re-enable mic
                         self.mic_on_at = time.time()
+                
+                elif event_type == "speech.transcription":
+                    # Handle user speech transcription
+                    text = event.get("transcription", {}).get("text", "")
+                    if text.strip():
+                        self.update_transcription(text, is_assistant=False)
+                        await self.process_voice_command(text)
                 
                 elif event_type == "error":
                     error_msg = event.get('error', {}).get('message', 'Unknown error')
