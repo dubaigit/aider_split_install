@@ -55,6 +55,28 @@ class AiderVoiceGUI:
         self.root.geometry("800x600")
         self.setup_gui()
         
+    def toggle_voice_control(self):
+        """Toggle voice control on/off"""
+        if not hasattr(self, 'recording') or not self.recording:
+            self.start_voice_control()
+        else:
+            self.stop_voice_control()
+            
+    def start_voice_control(self):
+        """Start voice control"""
+        self.recording = True
+        self.voice_button.configure(text="🔴 Stop Voice Control")
+        self.status_label.configure(text="Listening...")
+        self.assistant = VoiceAssistant(self.root)
+        
+    def stop_voice_control(self):
+        """Stop voice control"""
+        self.recording = False
+        self.voice_button.configure(text="🎤 Start Voice Control")
+        self.status_label.configure(text="Ready")
+        if hasattr(self, 'assistant'):
+            self.assistant.stop_voice_control()
+            
     def setup_gui(self):
         # Create main frame
         self.main_frame = ttk.Frame(self.root, padding="10")
