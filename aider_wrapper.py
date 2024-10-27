@@ -164,8 +164,6 @@ class KeyboardShortcuts:
 class AudioProcessingError(Exception):
     """Custom exception for audio processing errors"""
 
-    pass
-
 
 class ResultProcessor:
     """Processes and manages results from various operations"""
