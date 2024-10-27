@@ -5,7 +5,12 @@ OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/realtime"  # Updated endpo
 
 class AiderVoiceGUI:
     def __init__(self, root):
-        # [Previous initialization code remains unchanged...]
+        self.root = root
+        self.ws = None
+        self.response_active = False
+        self.last_transcript_id = None
+        self.audio_buffer = bytearray()
+        self.last_audio_time = time.time()
         
     async def connect_websocket(self):
         """Connect to OpenAI's realtime websocket API"""
