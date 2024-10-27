@@ -220,6 +220,28 @@ class AiderVoiceGUI:
         self.mic_queue = Queue()
         self.audio_queue = Queue()
 
+        # Initialize GUI components
+        self.main_frame = None
+        self.left_panel = None
+        self.control_frame = None
+        self.status_label = None
+        self.add_files_button = None
+        self.check_issues_button = None
+        self.files_frame = None
+        self.files_listbox = None
+        self.remove_file_button = None
+        self.input_frame = None
+        self.input_text = None
+        self.clipboard_button = None
+        self.send_button = None
+        self.right_panel = None
+        self.transcription_frame = None
+        self.transcription_text = None
+        self.issues_frame = None
+        self.issues_text = None
+        self.log_frame = None
+        self.output_text = None
+
         # Initialize all attributes
         self.audio_buffer = bytearray()
         self.mic_stream = None
