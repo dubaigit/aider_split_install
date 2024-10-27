@@ -956,12 +956,17 @@ class AiderVoiceGUI:
                             
                 except Exception as e:
                     self.log_message(f"Error adding file {file}: {e}")
-            
+        
             if added_files:
-                # Send detailed voice feedback about added files
-                file_summary = self.generate_file_summary(added_files)
+                # Create a more conversational response
+                if len(added_files) == 1:
+                    filename = os.path.basename(added_files[0])
+                    response = f"I see you've added {filename}. Would you like me to analyze it for potential issues or help you make any specific changes?"
+                else:
+                    response = f"I see you've added {len(added_files)} files. Would you like me to check them for any issues or help you with specific modifications?"
+                
                 asyncio.run_coroutine_threadsafe(
-                    self.send_audio_response(file_summary),
+                    self.send_audio_response(response),
                     self.loop
                 )
     
@@ -1088,7 +1093,7 @@ class AiderVoiceGUI:
         return analysis
 
     def check_all_issues(self):
-        """Run both ruff and mypy checks"""
+        """Run both ruff and mypy checks with improved voice feedback"""
         self.issues_text.delete('1.0', tk.END)
         self.issues_text.insert(tk.END, "Running checks...\n\n")
         
@@ -1100,7 +1105,8 @@ class AiderVoiceGUI:
             ruff_result = subprocess.run(
                 ["ruff", "check", "."],
                 capture_output=True,
-                text=True
+                text=True,
+                check=False
             )
             self.issues_text.insert(tk.END, "=== Ruff Issues ===\n")
             if ruff_result.stdout:
@@ -1116,7 +1122,8 @@ class AiderVoiceGUI:
             mypy_result = subprocess.run(
                 ["mypy", "."],
                 capture_output=True,
-                text=True
+                text=True,
+                check=False
             )
             self.issues_text.insert(tk.END, "=== Mypy Issues ===\n")
             if mypy_result.stdout:
@@ -1128,18 +1135,26 @@ class AiderVoiceGUI:
         
         self.issues_text.see(tk.END)
         
-        # Send voice feedback about issues
+        # Provide more detailed voice feedback
         if has_issues:
             issue_count = len(all_issues)
+            issue_types = set()
+            for issue in all_issues:
+                if "error" in issue.lower():
+                    issue_types.add("errors")
+                elif "warning" in issue.lower():
+                    issue_types.add("warnings")
+                
+            issue_type_str = " and ".join(issue_types)
+            response = f"I've found {issue_count} {issue_type_str} in the code. Would you like me to help fix these issues using Aider, or would you prefer to review them first?"
+            
             asyncio.run_coroutine_threadsafe(
-                self.send_audio_response(
-                    f"I found {issue_count} issues in the code. Would you like me to help fix them using Aider?"
-                ),
+                self.send_audio_response(response),
                 self.loop
             )
         else:
             asyncio.run_coroutine_threadsafe(
-                self.send_audio_response("Great news! I didn't find any issues in the code."),
+                self.send_audio_response("I've checked the code and everything looks good! No issues were found. Is there anything specific you'd like me to help you with?"),
                 self.loop
             )
     
