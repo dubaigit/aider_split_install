@@ -506,26 +506,26 @@ class AiderVoiceGUI:
                 
                 event_type = event.get("type")
                 
-                if event_type == "message.chunk":
+                if event_type == "message.delta":
                     # Handle message chunks from the assistant
-                    chunk = event.get("chunk", {})
-                    text = chunk.get("content", "")
+                    delta = event.get("delta", {})
+                    text = delta.get("content", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
-                        self.response_active = True
                         accumulated_text += text
+                        self.response_active = True
                 
-                elif event_type == "speech.chunk":
+                elif event_type == "audio.delta":
                     # Handle audio chunks from the assistant
                     try:
-                        audio_content = base64.b64decode(event.get('chunk', {}).get('audio', ''))
+                        audio_content = base64.b64decode(event.get('delta', ''))
                         if audio_content:
                             self.audio_buffer.extend(audio_content)
                             self.log_message(f'Received {len(audio_content)} bytes of audio data')
                     except Exception as e:
                         self.log_message(f"Error processing audio response: {e}")
                 
-                elif event_type == "speech.done":
+                elif event_type == "audio.done":
                     self.log_message("AI finished speaking")
                     self.response_active = False
                     # Reset mic suppression after a short delay
@@ -556,7 +556,6 @@ class AiderVoiceGUI:
                     text = event.get("transcription", {}).get("text", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=False)
-                        await self.process_voice_command(text)
                         await self.process_voice_command(text)
                 
                 elif event_type == "error":
