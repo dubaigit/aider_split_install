@@ -699,7 +699,7 @@ class AiderVoiceGUI:
 
         # Start audio processing thread
         self.audio_thread = threading.Thread(
-            target=self._process_audio_thread, daemon=True
+            target=self.process_audio_thread, daemon=True
         )
         self.audio_thread.start()
 
@@ -802,7 +802,7 @@ class AiderVoiceGUI:
                         combined_chunk = buffer_manager.combine_chunks(chunks)
 
                         if self.ws and self.ws_manager.connection_state == "connected":
-                            await self._send_audio_chunk(combined_chunk)
+                            await self.send_audio_chunk(combined_chunk)
 
                         # Monitor latency
                         latency = (time.time() - start_time) * 1000
@@ -1044,7 +1044,7 @@ class AiderVoiceGUI:
             except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
                 self.log_message(f"WebSocket error: {e}")
                 await asyncio.sleep(1)
-                await self.ws_manager._attempt_reconnect()
+                await self.ws_manager.attempt_reconnect()
                 continue
 
     async def process_voice_command(self, text):
