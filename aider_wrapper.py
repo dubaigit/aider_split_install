@@ -71,7 +71,11 @@ class VoiceAssistant:
             await self.ws.send(json.dumps({
                 "type": "session.update",
                 "session": {
-                    "input_audio_transcription": True,
+                    "input_audio_transcription": {
+                        "enabled": True,
+                        "language": "en",
+                        "model": "whisper-1"
+                    },
                     "voice": "alloy",
                     "instructions": """
                     You are an AI assistant that helps control the aider code assistant through voice commands.
