@@ -165,10 +165,44 @@ class AiderVoiceGUI:
         self.main_frame.columnconfigure(1, weight=2)  # Right panel takes more space
         self.main_frame.rowconfigure(0, weight=1)
         self.left_panel.columnconfigure(0, weight=1)
-        self.left_panel.rowconfigure(2, weight=1)  # Log frame takes remaining space
+        self.left_panel.rowconfigure(3, weight=1)  # Make file list expandable
         self.right_panel.columnconfigure(0, weight=1)
         self.right_panel.rowconfigure(0, weight=1)
         self.right_panel.rowconfigure(1, weight=1)
+        
+        # Create file list frame
+        self.files_frame = ttk.LabelFrame(self.left_panel, text="Added Files", padding="5")
+        self.files_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        # Create file list
+        self.files_list = tk.Listbox(self.files_frame, height=5)
+        self.files_list.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Add scrollbar to file list
+        files_scrollbar = ttk.Scrollbar(self.files_frame, orient=tk.VERTICAL, command=self.files_list.yview)
+        files_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.files_list.configure(yscrollcommand=files_scrollbar.set)
+        
+        # File list buttons
+        self.file_buttons_frame = ttk.Frame(self.files_frame)
+        self.file_buttons_frame.grid(row=1, column=0, columnspan=2, pady=5)
+        
+        self.remove_file_button = ttk.Button(
+            self.file_buttons_frame,
+            text="🗑️ Remove Selected",
+            command=self.remove_selected_file
+        )
+        self.remove_file_button.grid(row=0, column=0, padx=5)
+        
+        self.clear_files_button = ttk.Button(
+            self.file_buttons_frame,
+            text="🧹 Clear All",
+            command=self.clear_files
+        )
+        self.clear_files_button.grid(row=0, column=1, padx=5)
+        
+        # Initialize file list
+        self.added_files = set()
         
         # Initialize other attributes
         self.recording = False
@@ -202,6 +236,18 @@ class AiderVoiceGUI:
         
         # Initialize audio processing thread
         self.audio_thread = None
+        
+        # Configure grid weights
+        self.files_frame.columnconfigure(0, weight=1)  # Make file list expand horizontally
+        self.files_frame.rowconfigure(0, weight=1)  # Make file list expand vertically
+        
+        # Initialize file tracking
+        self.added_files = set()
+        self.current_context = {
+            "files": set(),
+            "last_command": None,
+            "last_response": None
+        }
         
         # Rest of initialization...
 
@@ -350,6 +396,31 @@ class AiderVoiceGUI:
                 }
             )
             
+            # Create context-aware instructions
+            files_context = "\n".join([f"- {os.path.basename(f)}" for f in self.added_files])
+            instructions = f"""
+            You are an AI assistant that helps control the aider code assistant through voice commands.
+            
+            Currently added files:
+            {files_context or "No files added yet"}
+            
+            Commands you understand:
+            - Run aider with clipboard content
+            - Add files to aider (from current directory)
+            - Check for issues and send to aider
+            - Summarize what happened when aider finishes
+            - List current files
+            - Remove file <filename>
+            - Clear all files
+            
+            Always confirm what action you're taking and provide clear feedback.
+            Keep track of the files that have been added and removed.
+            When checking for issues, focus on the currently added files.
+            
+            Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
+            Talk quickly and be engaging with a lively tone.
+            """
+            
             # Initialize session with correct configuration
             await self.ws.send(json.dumps({
                 "type": "session.update",
@@ -357,25 +428,14 @@ class AiderVoiceGUI:
                     "model": "gpt-4o",
                     "voice": "alloy",
                     "turn_detection": {
-                        "type": "server_vad",  # Required parameter
+                        "type": "server_vad",
                         "threshold": 0.5,
                         "prefix_padding_ms": 200,
                         "silence_duration_ms": 300
                     },
                     "temperature": 0.8,
                     "max_response_output_tokens": 2048,
-                    "instructions": """
-                    You are an AI assistant that helps control the aider code assistant through voice commands.
-                    Commands you understand:
-                    - Run aider with clipboard content
-                    - Add files to aider (from current directory)
-                    - Check for issues and send to aider
-                    - Summarize what happened when aider finishes
-                    
-                    Always confirm what action you're taking and provide clear feedback.
-                    Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
-                    Talk quickly and be engaging with a lively tone.
-                    """
+                    "instructions": instructions
                 }
             }))
             
@@ -473,26 +533,154 @@ class AiderVoiceGUI:
     async def process_voice_command(self, text):
         """Process transcribed voice commands"""
         self.log_message(f"Processing command: {text}")
+        self.current_context["last_command"] = text
         
-        if "run aider" in text.lower() and "clipboard" in text.lower():
-            self.log_message("Running aider with clipboard content...")
-            self.run_aider_with_clipboard()
+        # Read content of all added files
+        files_content = {}
+        for file_path in self.current_context["files"]:
+            try:
+                with open(file_path, 'r') as f:
+                    files_content[file_path] = f.read()
+            except Exception as e:
+                self.log_message(f"Error reading file {file_path}: {e}")
+        
+        # Add file contents to AI context
+        await self.update_ai_context(files_content)
+        
+        if "analyze" in text.lower() or "understand" in text.lower():
+            # Analyze files
+            await self.analyze_files(files_content)
             
-        elif "add files" in text.lower():
-            self.log_message("Adding files to aider...")
-            await self.add_files_to_aider()
+        elif "check issues" in text.lower():
+            # Run checks and analyze issues
+            await self.analyze_and_check_issues()
             
-        elif "check" in text.lower() and "issues" in text.lower():
-            self.log_message("Checking for issues...")
-            await self.check_for_issues()
+        elif "clipboard" in text.lower():
+            # Analyze clipboard content with context
+            await self.analyze_clipboard_content(files_content)
             
-        else:
-            await self.send_audio_response(
-                "I didn't understand that command. You can say:\n" +
-                "- Run aider with clipboard content\n" +
-                "- Add files to aider\n" +
-                "- Check for issues"
+        # ... rest of the command handling
+
+    async def analyze_files(self, files_content):
+        """Have AI analyze the files"""
+        if not files_content:
+            await self.send_audio_response("No files are currently added. Please add some files first.")
+            return
+            
+        analysis_prompt = f"""
+        Please analyze these files and provide a summary:
+        
+        Files to analyze:
+        {json.dumps(files_content, indent=2)}
+        
+        Please provide:
+        1. Overview of each file's purpose
+        2. Key functions and their roles
+        3. Any potential issues or improvements
+        4. Dependencies between files
+        """
+        
+        await self.send_ai_analysis(analysis_prompt)
+
+    async def analyze_and_check_issues(self):
+        """Run checks and have AI analyze the issues"""
+        self.issues_text.delete('1.0', tk.END)
+        self.issues_text.insert(tk.END, "Running checks and analyzing...\n\n")
+        
+        issues = []
+        
+        # Run ruff
+        try:
+            ruff_result = subprocess.run(
+                ["ruff", "check", "."],
+                capture_output=True,
+                text=True
             )
+            issues.append(("Ruff", ruff_result.stdout))
+        except Exception as e:
+            issues.append(("Ruff", f"Error: {e}"))
+        
+        # Run mypy
+        try:
+            mypy_result = subprocess.run(
+                ["mypy", "."],
+                capture_output=True,
+                text=True
+            )
+            issues.append(("Mypy", mypy_result.stdout))
+        except Exception as e:
+            issues.append(("Mypy", f"Error: {e}"))
+        
+        # Have AI analyze the issues
+        analysis_prompt = f"""
+        Please analyze these issues and provide a detailed explanation:
+        
+        {json.dumps(issues, indent=2)}
+        
+        Please provide:
+        1. Summary of each type of issue
+        2. Severity and impact of each issue
+        3. Recommended fixes
+        4. Priority order for addressing issues
+        """
+        
+        await self.send_ai_analysis(analysis_prompt)
+
+    async def analyze_clipboard_content(self, files_content):
+        """Analyze clipboard content in context of current files"""
+        try:
+            clipboard_content = pyperclip.paste()
+            if not clipboard_content.strip():
+                await self.send_audio_response("Clipboard is empty. Please copy some content first.")
+                return
+            
+            analysis_prompt = f"""
+            Please analyze this clipboard content in the context of the current files:
+            
+            Clipboard content:
+            {clipboard_content}
+            
+            Current files context:
+            {json.dumps(files_content, indent=2)}
+            
+            Please provide:
+            1. Analysis of the clipboard content
+            2. How it relates to current files
+            3. Suggested actions or changes
+            4. Potential impacts of changes
+            """
+            
+            await self.send_ai_analysis(analysis_prompt)
+            
+        except Exception as e:
+            self.log_message(f"Error analyzing clipboard content: {e}")
+
+    async def send_ai_analysis(self, prompt):
+        """Send analysis request to AI and handle response"""
+        if self.ws:
+            try:
+                await self.ws.send(json.dumps({
+                    "type": "conversation.item.create",
+                    "item": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": prompt
+                        }]
+                    }
+                }))
+                
+                # Create response to generate analysis
+                await self.ws.send(json.dumps({
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["text", "audio"]
+                    }
+                }))
+                
+            except Exception as e:
+                self.log_message(f"Error sending analysis request: {e}")
 
     def run_aider_with_clipboard(self):
         """Run aider using clipboard content"""
@@ -548,16 +736,53 @@ class AiderVoiceGUI:
             return
 
         try:
+            # Convert to list of full paths
+            file_paths = [f for f in files]
+            
             self.aider_process = subprocess.Popen(
-                ["python", "aider_wrapper.py"] + list(files),
+                ["python", "aider_wrapper.py"] + file_paths,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                stdin=subprocess.PIPE
+                stdin=subprocess.PIPE,
+                text=True,  # Use text mode for easier output handling
+                bufsize=1  # Line buffered
             )
-            self.log_message(f"Started aider with files: {', '.join(files)}")
-            self.check_aider_process()
+            
+            self.log_message(f"Started aider with files: {', '.join(os.path.basename(f) for f in file_paths)}")
+            
+            # Start monitoring in a separate thread
+            threading.Thread(
+                target=self.monitor_aider_output,
+                args=(self.aider_process,),
+                daemon=True
+            ).start()
+            
         except Exception as e:
             self.log_message(f"Error running aider with files: {e}")
+
+    def monitor_aider_output(self, process):
+        """Monitor aider output in a separate thread"""
+        try:
+            while True:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                if line:
+                    self.log_message(line.strip())
+            
+            # Process finished
+            if process.returncode == 0:
+                self.log_message("Aider completed successfully")
+            else:
+                self.log_message(f"Aider exited with error code: {process.returncode}")
+                
+                # Get any error output
+                errors = process.stderr.read()
+                if errors:
+                    self.log_message(f"Errors:\n{errors}")
+                    
+        except Exception as e:
+            self.log_message(f"Error monitoring aider output: {e}")
 
     def check_aider_process(self):
         """Check aider process status and output"""
@@ -720,9 +945,80 @@ class AiderVoiceGUI:
             )
         )
         if files:
-            self.log_message(f"Adding files: {', '.join(files)}")
-            # Add files to aider
+            self.add_files(files)
+
+    def add_files(self, files):
+        """Add files to the list and start aider"""
+        for file in files:
+            if file not in self.added_files:
+                self.added_files.add(file)
+                self.files_list.insert(tk.END, os.path.basename(file))
+                self.log_message(f"Added file: {file}")
+                
+                # Update AI context
+                self.current_context["files"].add(file)
+                self.update_ai_context()
+        
+        if files:
             self.run_aider_with_files(files)
+
+    def remove_selected_file(self):
+        """Remove selected file from the list"""
+        selection = self.files_list.curselection()
+        if selection:
+            index = selection[0]
+            filename = self.files_list.get(index)
+            self.files_list.delete(index)
+            
+            # Remove from both sets
+            full_path = next(f for f in self.added_files if os.path.basename(f) == filename)
+            self.added_files.remove(full_path)
+            self.current_context["files"].remove(full_path)
+            
+            self.log_message(f"Removed file: {filename}")
+            self.update_ai_context()
+
+    def clear_files(self):
+        """Clear all files from the list"""
+        self.files_list.delete(0, tk.END)
+        self.added_files.clear()
+        self.current_context["files"].clear()
+        self.log_message("Cleared all files")
+        self.update_ai_context()
+
+    async def update_ai_context(self):
+        """Update AI's context with current files"""
+        if self.ws:
+            try:
+                files_context = "\n".join([f"- {os.path.basename(f)}" for f in self.current_context["files"]])
+                instructions = f"""
+                You are an AI assistant that helps control the aider code assistant through voice commands.
+                
+                Currently added files:
+                {files_context or "No files added yet"}
+                
+                Commands you understand:
+                - Run aider with clipboard content
+                - Add files to aider (from current directory)
+                - Check for issues and send to aider
+                - Summarize what happened when aider finishes
+                - List current files
+                - Remove file <filename>
+                - Clear all files
+                
+                Always confirm what action you're taking and provide clear feedback.
+                Keep track of the files that have been added and removed.
+                When checking for issues, focus on the currently added files.
+                """
+                
+                await self.ws.send(json.dumps({
+                    "type": "session.update",
+                    "session": {
+                        "instructions": instructions
+                    }
+                }))
+            except Exception as e:
+                self.log_message(f"Error updating AI context: {e}")
 
     def check_all_issues(self):
         """Run both ruff and mypy checks"""
