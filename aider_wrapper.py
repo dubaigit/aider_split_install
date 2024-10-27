@@ -261,52 +261,6 @@ class AiderVoiceGUI:
         # Automatically start voice control
         self.start_voice_control()
 
-    def log_message(self, message):
-        """Log a message to the output text area"""
-        if hasattr(self, 'output_text'):
-            self.output_text.insert(tk.END, f"{message}\n")
-            self.output_text.see(tk.END)
-
-    def browse_files(self):
-        """Open file browser dialog to select files"""
-        files = filedialog.askopenfilenames()
-        for file in files:
-            if file not in self.interface_state['files']:
-                self.interface_state['files'][file] = None
-                self.files_listbox.insert(tk.END, file)
-
-    def check_all_issues(self):
-        """Check all files for issues"""
-        self.issues_text.delete('1.0', tk.END)
-        for file in self.interface_state['files']:
-            self.log_message(f"Checking {file} for issues...")
-
-    def remove_selected_file(self):
-        """Remove selected file from listbox"""
-        selection = self.files_listbox.curselection()
-        if selection:
-            file = self.files_listbox.get(selection)
-            self.files_listbox.delete(selection)
-            del self.interface_state['files'][file]
-
-    def use_clipboard_content(self):
-        """Load clipboard content into input text"""
-        if pyperclip:
-            content = pyperclip.paste()
-            self.input_text.delete('1.0', tk.END)
-            self.input_text.insert('1.0', content)
-
-    def send_input_text(self):
-        """Send input text content to processing"""
-        content = self.input_text.get('1.0', tk.END).strip()
-        if content:
-            self.log_message("Processing input...")
-
-    def update_transcription(self, text, is_assistant=False):
-        """Update transcription text area with new text"""
-        prefix = "🤖 " if is_assistant else "🎤 "
-        self.transcription_text.insert(tk.END, f"{prefix}{text}\n")
-        self.transcription_text.see(tk.END)
 
     async def _send_audio_chunk(self, chunk):
         """Send audio chunk to websocket"""
