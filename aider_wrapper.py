@@ -1289,5 +1289,5 @@ class WebSocketManager:
             self.reconnect_attempts += 1
             self.parent.log_message(f"Reconnection attempt failed: {e}")
         except asyncio.CancelledError:
-            break
+            return
 
