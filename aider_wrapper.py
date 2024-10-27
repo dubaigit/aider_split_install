@@ -434,13 +434,54 @@ class AiderVoiceGUI:
                     },
                     "temperature": 0.8,
                     "max_response_output_tokens": 2048,
+                    "functions": [
+                        {
+                            "name": "add_files",
+                            "description": "Add files to the assistant for analysis.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file_paths": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "List of file paths to add."
+                                    }
+                                },
+                                "required": ["file_paths"]
+                            }
+                        },
+                        {
+                            "name": "check_issues",
+                            "description": "Check the added files for issues.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        },
+                        {
+                            "name": "run_aider_with_clipboard",
+                            "description": "Run Aider with clipboard content.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        },
+                        {
+                            "name": "list_files",
+                            "description": "List all currently added files.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        }
+                    ],
                     "instructions": """
                     You are an AI assistant that helps control the Aider code assistant through voice commands.
-                    Commands you understand:
-                    - Run Aider with clipboard content
-                    - Add files to Aider (from current directory)
-                    - Check for issues and send to Aider
-                    - Summarize what happened when Aider finishes
+                    Use the provided functions to:
+                    - Run Aider with clipboard content (run_aider_with_clipboard)
+                    - Add files to Aider (add_files)
+                    - Check for issues (check_issues)
+                    - List added files (list_files)
                     
                     Always confirm what action you're taking and provide clear feedback.
                     Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
@@ -484,7 +525,7 @@ class AiderVoiceGUI:
             await asyncio.sleep(0.05)
     
     async def handle_websocket_messages(self):
-        """Handle incoming websocket messages"""
+        """Handle incoming websocket messages, including function calls."""
         while self.ws and self.recording:
             try:
                 message = await self.ws.recv()
@@ -492,7 +533,38 @@ class AiderVoiceGUI:
                 
                 event_type = event.get("type")
                 
-                if event_type == "response.text.delta":
+                if event_type == "response.function_call":
+                    function_call = event.get("delta", {}).get("function_call", {})
+                    function_name = function_call.get("name")
+                    arguments = json.loads(function_call.get("arguments", "{}"))
+
+                    # Execute the local function
+                    if function_name and hasattr(self, function_name):
+                        self.log_message(f"Executing function: {function_name}")
+                        function = getattr(self, function_name)
+                        try:
+                            if asyncio.iscoroutinefunction(function):
+                                result = await function(**arguments)
+                            else:
+                                result = function(**arguments)
+
+                            # Send the result back to the assistant
+                            await self.ws.send(json.dumps({
+                                "type": "function_call.result",
+                                "name": function_name,
+                                "result": result
+                            }))
+                        except Exception as e:
+                            self.log_message(f"Error executing function {function_name}: {e}")
+                            await self.ws.send(json.dumps({
+                                "type": "function_call.error",
+                                "name": function_name,
+                                "error": str(e)
+                            }))
+                    else:
+                        self.log_message(f"Unknown function called: {function_name}")
+                
+                elif event_type == "response.text.delta":
                     text = event.get("delta", {}).get("text", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
@@ -541,54 +613,18 @@ class AiderVoiceGUI:
                 self.log_message(f"Event content: {json.dumps(event, indent=2)}")
     
     async def process_voice_command(self, text):
-        """Process transcribed voice commands"""
+        """Process transcribed voice commands using function calling."""
         self.log_message(f"Processing command: {text}")
-        
-        # Analyze current interface state
-        analysis = self.analyze_current_state()
-        self.interface_state['last_analysis'] = analysis
-        
-        # Normalize text for easier command recognition
-        command = text.lower()
-        
-        # Enhanced command understanding with context
-        context = {
-            'files': list(self.interface_state['files'].keys()),
-            'has_issues': bool(self.interface_state['issues']),
-            'aider_running': bool(self.aider_process and self.aider_process.poll() is None),
-            'clipboard_available': bool(self.interface_state['clipboard_history']),
-        }
-        
-        if "run aider" in command and "clipboard" in command:
-            self.log_message("Running Aider with clipboard content...")
-            self.run_aider_with_clipboard()
-            
-        elif "add files" in command:
-            self.log_message("Adding files to Aider...")
-            self.browse_files()
-            
-        elif "check" in command and "issues" in command:
-            self.log_message("Checking for issues...")
-            await self.check_for_issues()
-            
-        elif "list files" in command:
-            self.log_message("Listing added files...")
-            self.list_added_files()
-        
-        elif "navigate to" in command:
-            # Example: "Navigate to src directory"
-            directory = command.replace("navigate to", "").strip()
-            self.navigate_to_directory(directory)
-        
-        else:
-            await self.send_audio_response(
-                "I didn't understand that command. You can say:\n" +
-                "- Run Aider with clipboard content\n" +
-                "- Add files to Aider\n" +
-                "- Check for issues\n" +
-                "- List added files\n" +
-                "- Navigate to a directory"
-            )
+
+        # Send the user's input to the assistant
+        await self.ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "text", "text": text}]
+            }
+        }))
     
     def run_aider_with_clipboard(self):
         """Run Aider using clipboard content"""
@@ -1816,3 +1852,24 @@ if __name__ == "__main__":
                     
         except Exception as e:
             print(f"Error during cleanup: {e}")
+    def add_files(self, file_paths):
+        """Add files to the assistant for analysis."""
+        added_files = []
+        for file in file_paths:
+            content = self.read_file_content(file)
+            if content is not None:
+                self.interface_state['files'][file] = content
+                self.files_listbox.insert(tk.END, file)
+                self.log_message(f"Added file: {file}")
+                added_files.append(file)
+        return {"status": "success", "added_files": added_files}
+
+    async def check_issues(self):
+        """Check the added files for issues."""
+        await self.check_all_issues()
+        return {"status": "success"}
+
+    def list_files(self):
+        """List all currently added files."""
+        files = list(self.interface_state['files'].keys())
+        return {"status": "success", "files": files}
