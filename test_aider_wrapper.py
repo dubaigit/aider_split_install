@@ -593,6 +593,136 @@ class TestAudioProcessing(unittest.TestCase):
         finally:
             loop.close()
 
+class TestGUIEventHandlers(unittest.TestCase):
+    """Test GUI event handlers and interactions"""
+    
+    def setUp(self):
+        """Set up test environment"""
+        self.root = tk.Tk()
+        self.app = AiderVoiceGUI(self.root)
+        self.app.setup_gui()
+
+    def tearDown(self):
+        """Clean up after tests"""
+        self.root.destroy()
+
+    def test_browse_files(self):
+        """Test browse files button handler"""
+        with patch('tkinter.filedialog.askopenfilenames') as mock_dialog:
+            # Mock file selection
+            test_files = ['/path/test1.py', '/path/test2.py']
+            mock_dialog.return_value = test_files
+            
+            # Trigger browse files
+            self.app.browse_files()
+            
+            # Verify files were added
+            for file in test_files:
+                self.assertIn(file, self.app.interface_state['files'])
+                
+            # Verify listbox was updated
+            listbox_files = self.app.files_listbox.get(0, tk.END)
+            for file in test_files:
+                self.assertIn(file, listbox_files)
+
+    def test_remove_selected_file(self):
+        """Test remove file button handler"""
+        # Add test file
+        test_file = '/path/test.py'
+        self.app.interface_state['files'][test_file] = None
+        self.app.files_listbox.insert(tk.END, test_file)
+        
+        # Select and remove file
+        self.app.files_listbox.selection_set(0)
+        self.app.remove_selected_file()
+        
+        # Verify file was removed
+        self.assertNotIn(test_file, self.app.interface_state['files'])
+        self.assertEqual(self.app.files_listbox.size(), 0)
+
+    def test_use_clipboard_content(self):
+        """Test clipboard button handler"""
+        with patch('pyperclip.paste') as mock_paste:
+            test_content = "Test clipboard content"
+            mock_paste.return_value = test_content
+            
+            self.app.use_clipboard_content()
+            
+            # Verify content was inserted
+            input_content = self.app.input_text.get('1.0', tk.END).strip()
+            self.assertEqual(input_content, test_content)
+
+    def test_send_input_text(self):
+        """Test send button handler"""
+        test_input = "Test input content"
+        self.app.input_text.insert('1.0', test_input)
+        
+        # Mock log_message to verify it was called
+        self.app.log_message = MagicMock()
+        
+        self.app.send_input_text()
+        
+        self.app.log_message.assert_called_with("Processing input...")
+
+    def test_keyboard_shortcuts(self):
+        """Test keyboard shortcuts"""
+        # Mock methods that would be triggered by shortcuts
+        self.app.check_all_issues = MagicMock()
+        self.app.browse_files = MagicMock()
+        self.app.use_clipboard_content = MagicMock()
+        self.app.send_input_text = MagicMock()
+        self.app.stop_voice_control = MagicMock()
+        
+        # Test Control-r
+        self.root.event_generate('<Control-r>')
+        self.app.check_all_issues.assert_called_once()
+        
+        # Test Control-a
+        self.root.event_generate('<Control-a>')
+        self.app.browse_files.assert_called_once()
+        
+        # Test Control-v
+        self.root.event_generate('<Control-v>')
+        self.app.use_clipboard_content.assert_called_once()
+        
+        # Test Control-s
+        self.root.event_generate('<Control-s>')
+        self.app.send_input_text.assert_called_once()
+        
+        # Test Escape
+        self.root.event_generate('<Escape>')
+        self.app.stop_voice_control.assert_called_once()
+
+    def test_update_transcription(self):
+        """Test transcription updates"""
+        # Test user transcription
+        user_text = "User test message"
+        self.app.update_transcription(user_text, is_assistant=False)
+        content = self.app.transcription_text.get('1.0', tk.END)
+        self.assertIn("🎤 " + user_text, content)
+        
+        # Test assistant transcription
+        assistant_text = "Assistant test message"
+        self.app.update_transcription(assistant_text, is_assistant=True)
+        content = self.app.transcription_text.get('1.0', tk.END)
+        self.assertIn("🤖 " + assistant_text, content)
+
+    def test_log_message(self):
+        """Test log message updates"""
+        test_message = "Test log message"
+        self.app.log_message(test_message)
+        
+        # Verify message was added to output
+        log_content = self.app.output_text.get('1.0', tk.END).strip()
+        self.assertEqual(log_content, test_message)
+        
+        # Test multiple messages
+        second_message = "Second test message"
+        self.app.log_message(second_message)
+        log_content = self.app.output_text.get('1.0', tk.END).strip()
+        self.assertIn(test_message, log_content)
+        self.assertIn(second_message, log_content)
+
 class TestClipboardManager(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
