@@ -73,6 +73,28 @@ class AiderVoiceGUI:
         self.root.title("Aider Voice Assistant")
         self.root.geometry("1200x800")
         
+        # Initialize all attributes
+        self.response_active = False
+        self.last_transcript_id = None
+        self.last_audio_time = time.time()
+        self.recording = False
+        self.auto_mode = False
+        self.audio_queue = queue.Queue()
+        self.ws = None
+        self.running = True
+        self.client = OpenAI()
+        self.aider_process = None
+        self.temp_files = []
+        self.fixing_issues = False
+        self.mic_active = False
+        self.mic_on_at = 0
+        self._stop_event = threading.Event()
+        self.log_frequency = 50
+        self.log_counter = 0
+        self.chunk_buffer = []
+        self.chunk_buffer_size = 5
+        self.audio_thread = None
+        
         # Track interface state and content
         self.interface_state = {
             'files': {},  # Store file contents
@@ -1258,7 +1280,7 @@ class AiderVoiceGUI:
         return "\n".join(analysis)
 
     def summarize_aider_session(self):
-        """Summarize the completed Aider session"""
+        """Summarize the completed Aider session results."""
         self.log_message("\n=== Aider Session Summary ===")
         
         # Count files processed
@@ -1284,18 +1306,18 @@ class AiderVoiceGUI:
             self.log_message("\n⚠️ Remaining issues to address:")
             for issue in issues[:5]:  # Show top 5 issues
                 self.log_message(f"  • {issue}")
-                
+            
         self.log_message("\n✅ Aider session completed successfully")
 
     def summarize_aider_errors(self):
-        """Summarize errors from Aider session"""
+        """Summarize errors encountered during Aider session."""
         self.log_message("\n=== Aider Error Summary ===")
         
         errors = []
         for line in self.interface_state['aider_output']:
             if any(err in line.lower() for err in ['error', 'exception', 'failed']):
                 errors.append(line)
-                
+            
         if errors:
             self.log_message("❌ Errors encountered:")
             for error in errors:
