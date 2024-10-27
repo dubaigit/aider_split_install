@@ -224,7 +224,7 @@ class AiderVoiceGUI:
         self.last_audio_time = time.time()
         self.recording = False
         self.auto_mode = False
-        self.audio_queue = queue.Queue()
+        self.audio_queue = Queue()
         self.ws = None
         self.running = True
         self.client = OpenAI()
@@ -250,7 +250,7 @@ class AiderVoiceGUI:
         }
         
         # Create main frame with padding
-        self.main_frame = ttk.Frame(root, padding="10")
+        self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Create left panel for controls and input
@@ -367,7 +367,7 @@ class AiderVoiceGUI:
         # Initialize other attributes
         self.recording = False
         self.auto_mode = False
-        self.audio_queue = queue.Queue()
+        self.audio_queue = Queue()
         self.ws = None
         self.running = True
         self.client = OpenAI()
@@ -383,7 +383,7 @@ class AiderVoiceGUI:
         # Initialize audio components
         self.p = pyaudio.PyAudio()
         self.audio_buffer = bytearray()  # Changed from bytes to bytearray
-        self.mic_queue = queue.Queue()
+        self.mic_queue = Queue()
         self.mic_on_at = 0
         self.mic_active = False
         self._stop_event = threading.Event()
