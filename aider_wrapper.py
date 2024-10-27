@@ -761,8 +761,14 @@ class AiderVoiceGUI:
                     self.log_message("🎙️🔴 Mic suppressed")
                     self.mic_active = False
             return (None, pyaudio.paContinue)
-        except (ValueError, RuntimeError, OSError) as e:
-            self.log_message(f"Error in mic callback: {e}")
+        except ValueError as e:
+            self.log_message(f"Value error in mic callback: {e}")
+            return (None, pyaudio.paContinue)
+        except RuntimeError as e:
+            self.log_message(f"Runtime error in mic callback: {e}")
+            return (None, pyaudio.paContinue)
+        except OSError as e:
+            self.log_message(f"OS error in mic callback: {e}")
             return (None, pyaudio.paContinue)
 
     async def _process_audio_thread(self):
@@ -929,8 +935,10 @@ class AiderVoiceGUI:
                             }
                         )
                     )
-                except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
-                    self.log_message(f"Error sending audio data: {e}")
+                except websockets.exceptions.WebSocketException as e:
+                    self.log_message(f"WebSocket error sending audio data: {e}")
+                except json.JSONDecodeError as e:
+                    self.log_message(f"JSON decode error sending audio data: {e}")
 
                 await asyncio.sleep(0.05)
             except Empty:
@@ -968,8 +976,10 @@ class AiderVoiceGUI:
                                     "name": function_name,
                                     "result": result
                                 }))
-                            except (TypeError, ValueError) as e:
-                                self.log_message(f"Error executing function {function_name}: {e}")
+                            except TypeError as e:
+                                self.log_message(f"Type error executing function {function_name}: {e}")
+                            except ValueError as e:
+                                self.log_message(f"Value error executing function {function_name}: {e}")
                                 await self.ws.send(json.dumps({
                                     "type": "function_call.error",
                                     "name": function_name,
@@ -1075,8 +1085,10 @@ class AiderVoiceGUI:
                         self.interface_state['command_history'][-1]['status'] = 'completed'
                         break
                         
-                except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
-                    self.log_message(f"Retry {attempt + 1}/{max_retries}: {e}")
+                except websockets.exceptions.WebSocketException as e:
+                    self.log_message(f"WebSocket error on retry {attempt + 1}/{max_retries}: {e}")
+                except json.JSONDecodeError as e:
+                    self.log_message(f"JSON decode error on retry {attempt + 1}/{max_retries}: {e}")
                     if attempt == max_retries - 1:
                         self.interface_state['command_history'][-1]['status'] = 'failed'
                         self.interface_state['command_history'][-1]['error'] = str(e)
@@ -1200,7 +1212,9 @@ class WebSocketManager:
                     await self._attempt_reconnect()
 
                 await asyncio.sleep(1)
-            except (websockets.exceptions.WebSocketException, ConnectionError) as e:
+            except websockets.exceptions.WebSocketException as e:
+                self.parent.log_message(f"WebSocket monitoring error: {e}")
+            except ConnectionError as e:
                 self.parent.log_message(f"Connection monitoring error: {e}")
             except asyncio.CancelledError:
                 break
@@ -1211,9 +1225,12 @@ class WebSocketManager:
             if self.parent.ws:
                 await self.parent.ws.ping()
                 self.last_ping_time = time.time()
-        except (websockets.exceptions.WebSocketException, ConnectionError) as e:
+        except websockets.exceptions.WebSocketException as e:
             self.connection_state = "disconnected"
-            self.parent.log_message(f"⚠️ WebSocket connection lost: {e}")
+            self.parent.log_message(f"⚠️ WebSocket connection lost due to WebSocket error: {e}")
+        except ConnectionError as e:
+            self.connection_state = "disconnected"
+            self.parent.log_message(f"⚠️ WebSocket connection lost due to connection error: {e}")
             await self._attempt_reconnect()
 
     async def _attempt_reconnect(self):
