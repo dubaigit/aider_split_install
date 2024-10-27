@@ -64,7 +64,7 @@ SAMPLE_RATE = 24000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 REENGAGE_DELAY_MS = 500
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/realtime"
 
 class AiderVoiceGUI:
     def __init__(self, root):
@@ -414,7 +414,7 @@ class AiderVoiceGUI:
         """Connect to OpenAI's realtime websocket API"""
         try:
             self.ws = await websockets.connect(
-                f"{OPENAI_WEBSOCKET_URL}?model=gpt-4",
+                f"{OPENAI_WEBSOCKET_URL}?model=gpt-4-1106-preview",
                 extra_headers={
                     "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
                     "Content-Type": "application/json",
