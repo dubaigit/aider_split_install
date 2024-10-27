@@ -421,7 +421,7 @@ class AiderVoiceGUI:
         # Terminate PyAudio
         self.p.terminate()
     
-    def _mic_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[None, int]:
+    async def _mic_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[None, int]:
         """Handle microphone input callback from PyAudio.
         
         Args:
@@ -505,7 +505,7 @@ class AiderVoiceGUI:
                 
             await asyncio.sleep(0.01)  # Cooperative yield
     
-    def _spkr_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[bytes, int]:
+    async def _spkr_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[bytes, int]:
         """Handle speaker output callback from PyAudio.
         
         Args:
@@ -1830,6 +1830,23 @@ def main():
         except Exception as e:
             print(f"Error creating git commit: {e}")
             
+class VoiceCommandProcessor:
+    """Processes and validates voice commands"""
+    def __init__(self, parent):
+        self.parent = parent
+        
+    def preprocess_command(self, command):
+        """Clean and normalize voice command"""
+        if not command:
+            return ""
+        return command.strip().lower()
+        
+    def validate_command(self, command):
+        """Validate command format and content"""
+        if not command:
+            return False
+        return True
+
 class WebSocketManager:
     """Manages WebSocket connection state and monitoring"""
     def __init__(self, parent):
@@ -1888,10 +1905,10 @@ class WebSocketManager:
         except Exception as e:
             self.reconnect_attempts += 1
             self.parent.log_message(f"Reconnection attempt failed: {e}")
-    else:
-        print("Warning: Git functionality is disabled. Skipping git commit.")
+            else:
+                print("Warning: Git functionality is disabled. Skipping git commit.")
 
-    # Get instructions content
+            # Get instructions content
     instructions = ""
     if args.clipboard:
         instructions = get_clipboard_content()
@@ -1985,6 +2002,24 @@ class WebSocketManager:
 
 if __name__ == "__main__":
     main()
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Aider Voice Assistant")
+        
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
+        parser.add_argument("--voice-only", action="store_true", help="Run in voice control mode only")
+        parser.add_argument("-i", "--instructions", help="File containing instructions")
+        parser.add_argument("-c", "--clipboard", action="store_true", help="Use clipboard content as instructions")
+        parser.add_argument("filenames", nargs='*', help="Filenames to process")
+        parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
+        parser.add_argument("--suggest-shell-commands", action="store_true", help="Suggest shell commands while running aider")
+        parser.add_argument("--model", help="Model to use for aider")
+        parser.add_argument("--gui", action="store_true", help="Launch the GUI interface")
+        parser.add_argument("--auto", action="store_true", help="Automatically send ruff issues to aider (GUI mode only)")
+        
+        self.args = parser.parse_args()
+        
     def __del__(self) -> None:
         """Cleanup resources when object is deleted."""
         try:
