@@ -1178,7 +1178,7 @@ class ClipboardManager:
         """Detect the type of clipboard content"""
         if self.looks_like_code(content):
             return "code"
-        elif self.looks_like_url(content):
+        if self.looks_like_url(content):
             return "url"
         return "text"
 
