@@ -17,6 +17,11 @@ class AsyncMock(MagicMock):
         pass
 
 class TestAiderVoiceGUI(unittest.TestCase):
+    def setUp(self):
+        """Set up test environment"""
+        # Mock argument parser
+        patcher = patch('argparse.ArgumentParser.parse_args')
+        self.mock_parse_args = patcher.start()
         self.addCleanup(patcher.stop)
 
         mock_args = MagicMock()
