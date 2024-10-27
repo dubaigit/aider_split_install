@@ -495,6 +495,11 @@ class AiderVoiceGUI:
             "last_analysis": None,  # Store last analysis results
         }
 
+        # Setup GUI components
+        self.setup_gui()
+
+    def setup_gui(self):
+        """Setup GUI components and layout"""
         # Create main frame with padding
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
