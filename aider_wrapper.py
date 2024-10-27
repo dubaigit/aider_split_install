@@ -65,13 +65,13 @@ except ImportError:
     git = None
 
 # Audio settings (only if pyaudio is available)
-if pyaudio:
-    CHUNK_SIZE = 1024
-    SAMPLE_RATE = 24000
-    CHANNELS = 1
-    FORMAT = pyaudio.paInt16
-    REENGAGE_DELAY_MS = 500
-    OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+# Audio constants
+CHUNK_SIZE = 1024
+SAMPLE_RATE = 24000
+CHANNELS = 1
+FORMAT = pyaudio.paInt16 if pyaudio else None
+REENGAGE_DELAY_MS = 500
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
 
 class ModernDarkTheme:
     """Modern dark theme colors and styles"""
@@ -154,6 +154,20 @@ class AiderVoiceGUI:
         # Create main container with modern styling
         self.main_frame = ttk.Frame(self.root, style="Dark.TFrame", padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Initialize GUI elements
+        self.files_frame = ttk.Frame(self.main_frame, style="Dark.TFrame")
+        self.issues_frame = ttk.Frame(self.main_frame, style="Dark.TFrame")
+        self.input_frame = ttk.Frame(self.main_frame, style="Dark.TFrame")
+        self.tabs = ttk.Notebook(self.main_frame, style="Dark.TNotebook")
+        
+        # Initialize text widgets
+        self.files_list = tk.Listbox(self.files_frame, bg=self.theme.BG_DARK, fg=self.theme.FG_LIGHT)
+        self.issues_text = scrolledtext.ScrolledText(self.issues_frame, bg=self.theme.BG_DARK, fg=self.theme.FG_LIGHT)
+        self.input_text = scrolledtext.ScrolledText(self.input_frame, bg=self.theme.BG_DARK, fg=self.theme.FG_LIGHT)
+        self.transcription_text = scrolledtext.ScrolledText(self.main_frame, bg=self.theme.BG_DARK, fg=self.theme.FG_LIGHT)
+        self.terminal_input = ttk.Entry(self.main_frame, style="Dark.TEntry")
+        self.status_label = ttk.Label(self.main_frame, text="Ready", style="Dark.TLabel")
         
         # Create and style the notebook for tabs
         self.notebook = ttk.Notebook(self.main_frame, style="Dark.TNotebook")
@@ -1511,6 +1525,56 @@ class AiderVoiceGUI:
                 
             except Exception as e:
                 self.log_message(f"Error sending analysis request: {e}")
+
+def get_clipboard_content():
+    """Get content from clipboard"""
+    try:
+        return pyperclip.paste()
+    except Exception as e:
+        print(f"Error getting clipboard content: {e}")
+        return ""
+
+def read_file_content(filename):
+    """Read content from a file"""
+    try:
+        with open(filename, 'r') as f:
+            return f.read()
+    except Exception as e:
+        print(f"Error reading file {filename}: {e}")
+        return ""
+
+def create_message_content(instructions, file_contents):
+    """Create message content from instructions and files"""
+    content = []
+    if instructions:
+        content.append("Instructions:")
+        content.append(instructions)
+        content.append("\n")
+    
+    if file_contents:
+        content.append("File contents:")
+        for filename, text in file_contents.items():
+            content.append(f"\n{filename}:")
+            content.append(text)
+    
+    return "\n".join(content)
+
+def handle_aider_prompts(process):
+    """Handle interactive prompts from aider"""
+    try:
+        while True:
+            # Check for output
+            output = process.stdout.readline()
+            if not output:
+                break
+            print(output, end='')
+            
+            # Check for prompts that need response
+            if "Do you want to proceed?" in output:
+                process.stdin.write("y\n")
+                process.stdin.flush()
+    except Exception as e:
+        print(f"Error handling aider prompts: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
