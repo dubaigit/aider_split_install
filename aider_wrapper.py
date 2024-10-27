@@ -427,7 +427,10 @@ class AiderVoiceGUI:
                 "type": "session.create",
                 "session": {
                     "model": "gpt-4-1106-preview",
-                    "voice": "alloy",
+                    "voice": {
+                        "type": "tts",
+                        "voice": "alloy"
+                    },
                     "turn_detection": {
                         "type": "server_vad",
                         "threshold": 0.5,
