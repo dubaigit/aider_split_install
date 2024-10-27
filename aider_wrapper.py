@@ -888,15 +888,25 @@ class AiderVoiceGUI:
             )
         )
         if files:
+            added_files = []
             for file in files:
                 try:
                     content = self.read_file_content(file)
                     if content is not None:
                         self.interface_state['files'][file] = content
                         self.files_listbox.insert(tk.END, file)
+                        added_files.append(file)
                         self.log_message(f"Added file to interface: {file}")
                 except Exception as e:
                     self.log_message(f"Error adding file {file}: {e}")
+            
+            if added_files:
+                # Send voice feedback about added files
+                file_names = ", ".join(os.path.basename(f) for f in added_files)
+                asyncio.run_coroutine_threadsafe(
+                    self.send_audio_response(f"I've added {len(added_files)} files: {file_names}. Would you like me to check them for issues?"),
+                    self.loop
+                )
     
     def remove_selected_file(self):
         """Remove selected file from the list"""
@@ -945,6 +955,7 @@ class AiderVoiceGUI:
         self.issues_text.insert(tk.END, "Running checks...\n\n")
         
         all_issues = []
+        has_issues = False
         
         # Run ruff
         try:
@@ -954,6 +965,9 @@ class AiderVoiceGUI:
                 text=True
             )
             self.issues_text.insert(tk.END, "=== Ruff Issues ===\n")
+            if ruff_result.stdout:
+                has_issues = True
+                all_issues.extend(ruff_result.stdout.splitlines())
             self.issues_text.insert(tk.END, ruff_result.stdout or "No issues found!\n")
             self.issues_text.insert(tk.END, "\n")
         except Exception as e:
@@ -967,10 +981,29 @@ class AiderVoiceGUI:
                 text=True
             )
             self.issues_text.insert(tk.END, "=== Mypy Issues ===\n")
+            if mypy_result.stdout:
+                has_issues = True
+                all_issues.extend(mypy_result.stdout.splitlines())
             self.issues_text.insert(tk.END, mypy_result.stdout or "No issues found!\n")
         except Exception as e:
             self.issues_text.insert(tk.END, f"Error running mypy: {e}\n")
+        
         self.issues_text.see(tk.END)
+        
+        # Send voice feedback about issues
+        if has_issues:
+            issue_count = len(all_issues)
+            asyncio.run_coroutine_threadsafe(
+                self.send_audio_response(
+                    f"I found {issue_count} issues in the code. Would you like me to help fix them using Aider?"
+                ),
+                self.loop
+            )
+        else:
+            asyncio.run_coroutine_threadsafe(
+                self.send_audio_response("Great news! I didn't find any issues in the code."),
+                self.loop
+            )
     
     def use_clipboard_content(self):
         """Get content from clipboard and show in input text"""
