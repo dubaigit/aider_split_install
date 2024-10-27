@@ -16,6 +16,11 @@ class AsyncMock(MagicMock):
     async def __aexit__(self, *args):
         pass
 
+    def __await__(self):
+        async def dummy():
+            return self
+        return dummy().__await__()
+
 class TestAiderVoiceGUI(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
@@ -68,7 +73,7 @@ class TestAiderVoiceGUI(unittest.TestCase):
         transcription = self.app.transcription_text.get("1.0", tk.END).strip()
         self.assertIn("🎤 " + test_text, transcription)
 
-    @patch('websockets.connect')
+    @patch('websockets.connect', new_callable=AsyncMock)
     def test_connect_websocket(self, mock_connect):
         """Test websocket connection"""
         # Create async mock for websocket
@@ -81,7 +86,11 @@ class TestAiderVoiceGUI(unittest.TestCase):
             result = await self.app.connect_websocket()
             self.assertTrue(result)
             self.assertEqual(self.app.ws, mock_ws)
-            mock_ws.send.assert_called_once()  # Verify session.update was sent
+            # Verify session.update was sent with correct data
+            mock_ws.send.assert_called_once()
+            call_args = mock_ws.send.call_args[0][0]
+            self.assertIn("session.update", call_args)
+            self.assertIn("model", call_args)
 
         # Create and run event loop
         loop = asyncio.new_event_loop()
