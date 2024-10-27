@@ -802,17 +802,17 @@ class AiderVoiceGUI:
                     self.log_message(f"Error from OpenAI: {error_msg}")
                     if "active response" in error_msg.lower():
                         self.response_active = True
-            
-        except websockets.exceptions.ConnectionClosed:
-            self.log_message("WebSocket connection closed")
-            break
-        except json.JSONDecodeError as e:
-            self.log_message(f"Error decoding message: {e}")
-            continue
-        except Exception as e:
-            self.log_message(f"Error handling websocket message: {e}")
-            await asyncio.sleep(1)
-            continue
+
+            except websockets.exceptions.ConnectionClosed:
+                self.log_message("WebSocket connection closed")
+                break
+            except json.JSONDecodeError as e:
+                self.log_message(f"Error decoding message: {e}")
+                continue
+            except Exception as e:
+                self.log_message(f"Error handling websocket message: {e}")
+                await asyncio.sleep(1)
+                continue
     
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
