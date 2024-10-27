@@ -1149,7 +1149,120 @@ class AiderVoiceGUI:
         
         # Also update the log
         self.log_message(f"{prefix}{text}")
-    
+
+    def read_file_content(self, filename):
+        """Read file content with robust error handling"""
+        try:
+            with open(filename, 'r', encoding='utf-8') as file:
+                content = file.read()
+                if not content:
+                    self.log_message(f"Warning: File {filename} is empty")
+                return content
+        except FileNotFoundError:
+            self.log_message(f"Error: File {filename} not found")
+        except PermissionError:
+            self.log_message(f"Error: Permission denied accessing {filename}")
+        except Exception as e:
+            self.log_message(f"Error reading file {filename}: {e}")
+        return None
+
+    def analyze_python_file(self, content):
+        """Analyze Python file content"""
+        analysis = []
+        
+        # Check for imports
+        imports = re.findall(r'^import\s+.*$|^from\s+.*\s+import\s+.*$', content, re.MULTILINE)
+        if imports:
+            analysis.append("Found imports: " + str(len(imports)))
+            
+        # Check for classes
+        classes = re.findall(r'^class\s+\w+.*:$', content, re.MULTILINE)
+        if classes:
+            analysis.append("Found classes: " + str(len(classes)))
+            
+        # Check for functions
+        functions = re.findall(r'^def\s+\w+\s*\(.*\):$', content, re.MULTILINE)
+        if functions:
+            analysis.append("Found functions: " + str(len(functions)))
+            
+        # Check for TODO comments
+        todos = re.findall(r'#\s*TODO:', content, re.IGNORECASE)
+        if todos:
+            analysis.append("Found TODOs: " + str(len(todos)))
+            
+        return "\n".join(analysis)
+
+    def analyze_javascript_file(self, content):
+        """Analyze JavaScript file content"""
+        analysis = []
+        
+        # Check for imports/requires
+        imports = re.findall(r'^import\s+.*$|^const.*require\(.*\)$', content, re.MULTILINE)
+        if imports:
+            analysis.append("Found imports/requires: " + str(len(imports)))
+            
+        # Check for classes
+        classes = re.findall(r'^class\s+\w+.*{$', content, re.MULTILINE)
+        if classes:
+            analysis.append("Found classes: " + str(len(classes)))
+            
+        # Check for functions
+        functions = re.findall(r'^(function\s+\w+|\w+\s*=\s*function|\w+\s*:\s*function)', content, re.MULTILINE)
+        if functions:
+            analysis.append("Found functions: " + str(len(functions)))
+            
+        # Check for React components
+        components = re.findall(r'^const\s+\w+\s*=\s*\(\s*\)\s*=>\s*{', content, re.MULTILINE)
+        if components:
+            analysis.append("Found React components: " + str(len(components)))
+            
+        return "\n".join(analysis)
+
+    def summarize_aider_session(self):
+        """Summarize the completed Aider session"""
+        self.log_message("\n=== Aider Session Summary ===")
+        
+        # Count files processed
+        files_processed = len(self.interface_state['files'])
+        self.log_message(f"📁 Files processed: {files_processed}")
+        
+        # Analyze output for changes
+        changes = []
+        for line in self.interface_state['aider_output']:
+            if "Changed" in line or "Modified" in line:
+                changes.append(line)
+        
+        if changes:
+            self.log_message("\n🔄 Changes made:")
+            for change in changes:
+                self.log_message(f"  • {change}")
+        else:
+            self.log_message("ℹ️ No files were modified")
+            
+        # Look for any remaining issues
+        issues = [line for line in self.interface_state['aider_output'] if "error" in line.lower()]
+        if issues:
+            self.log_message("\n⚠️ Remaining issues to address:")
+            for issue in issues[:5]:  # Show top 5 issues
+                self.log_message(f"  • {issue}")
+                
+        self.log_message("\n✅ Aider session completed successfully")
+
+    def summarize_aider_errors(self):
+        """Summarize errors from Aider session"""
+        self.log_message("\n=== Aider Error Summary ===")
+        
+        errors = []
+        for line in self.interface_state['aider_output']:
+            if any(err in line.lower() for err in ['error', 'exception', 'failed']):
+                errors.append(line)
+                
+        if errors:
+            self.log_message("❌ Errors encountered:")
+            for error in errors:
+                self.log_message(f"  • {error}")
+        
+        self.log_message("\nPlease check the logs above for more details")
 def read_file_content(filename):
     """Read file content with robust error handling"""
     try:
@@ -1535,64 +1648,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    def read_file_content(self, filename):
-        """Read file content with robust error handling"""
-        try:
-            with open(filename, 'r', encoding='utf-8') as file:
-                content = file.read()
-                if not content:
-                    self.log_message(f"Warning: File {filename} is empty")
-                return content
-        except FileNotFoundError:
-            self.log_message(f"Error: File {filename} not found")
-        except PermissionError:
-            self.log_message(f"Error: Permission denied accessing {filename}")
-        except Exception as e:
-            self.log_message(f"Error reading file {filename}: {e}")
-        return None
-
-    def summarize_aider_session(self):
-        """Summarize the completed Aider session"""
-        self.log_message("\n=== Aider Session Summary ===")
-        
-        # Count files processed
-        files_processed = len(self.interface_state['files'])
-        self.log_message(f"📁 Files processed: {files_processed}")
-        
-        # Analyze output for changes
-        changes = []
-        for line in self.interface_state['aider_output']:
-            if "Changed" in line or "Modified" in line:
-                changes.append(line)
-        
-        if changes:
-            self.log_message("\n🔄 Changes made:")
-            for change in changes:
-                self.log_message(f"  • {change}")
-        else:
-            self.log_message("ℹ️ No files were modified")
-            
-        # Look for any remaining issues
-        issues = [line for line in self.interface_state['aider_output'] if "error" in line.lower()]
-        if issues:
-            self.log_message("\n⚠️ Remaining issues to address:")
-            for issue in issues[:5]:  # Show top 5 issues
-                self.log_message(f"  • {issue}")
-                
-        self.log_message("\n✅ Aider session completed successfully")
-
-    def summarize_aider_errors(self):
-        """Summarize errors from Aider session"""
-        self.log_message("\n=== Aider Error Summary ===")
-        
-        errors = []
-        for line in self.interface_state['aider_output']:
-            if any(err in line.lower() for err in ['error', 'exception', 'failed']):
-                errors.append(line)
-                
-        if errors:
-            self.log_message("❌ Errors encountered:")
-            for error in errors:
-                self.log_message(f"  • {error}")
-        
-        self.log_message("\nPlease check the logs above for more details")
