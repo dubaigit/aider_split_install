@@ -497,6 +497,28 @@ class AiderVoiceGUI:
 
     def setup_gui(self):
         """Setup GUI components and layout"""
+        # Initialize all instance attributes first
+        self.main_frame = None
+        self.left_panel = None
+        self.control_frame = None
+        self.status_label = None
+        self.add_files_button = None
+        self.check_issues_button = None
+        self.files_frame = None
+        self.files_listbox = None
+        self.remove_file_button = None
+        self.input_frame = None
+        self.input_text = None
+        self.clipboard_button = None
+        self.send_button = None
+        self.right_panel = None
+        self.transcription_frame = None
+        self.transcription_text = None
+        self.issues_frame = None
+        self.issues_text = None
+        self.log_frame = None
+        self.output_text = None
+
         # Create main frame with padding
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
