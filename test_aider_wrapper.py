@@ -45,14 +45,41 @@ class AsyncMock(MagicMock):
     async def __anext__(self):
         raise StopAsyncIteration
 
-class TestAiderVoiceGUI(unittest.TestCase):
-    def setUp(self):
-        """Set up test environment"""
-        # Mock argument parser
-        patcher = patch('argparse.ArgumentParser.parse_args')
-        self.mock_parse_args = patcher.start()
-        self.addCleanup(patcher.stop)
+# Test fixtures and utilities
+@pytest.fixture
+def mock_args():
+    """Fixture for mocked command line arguments"""
+    args = MagicMock()
+    args.voice_only = False
+    args.instructions = None
+    args.clipboard = False
+    args.chat_mode = "code"
+    args.suggest_shell_commands = False
+    args.model = None
+    args.gui = True
+    args.auto = False
+    return args
 
+@pytest.fixture
+def gui_app(mock_args):
+    """Fixture for GUI application instance"""
+    with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
+        root = tk.Tk()
+        app = AiderVoiceGUI(root)
+        app.setup_gui()
+        yield app
+        root.destroy()
+
+class TestAiderVoiceGUI(unittest.TestCase):
+    """Test suite for AiderVoiceGUI main functionality"""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up test suite environment"""
+        # Mock argument parser
+        cls.args_patcher = patch('argparse.ArgumentParser.parse_args')
+        cls.mock_parse_args = cls.args_patcher.start()
+        
         mock_args = MagicMock()
         mock_args.voice_only = False
         mock_args.instructions = None
@@ -62,16 +89,23 @@ class TestAiderVoiceGUI(unittest.TestCase):
         mock_args.model = None
         mock_args.gui = True
         mock_args.auto = False
-        self.mock_parse_args.return_value = mock_args
+        cls.mock_parse_args.return_value = mock_args
 
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up test suite environment"""
+        cls.args_patcher.stop()
+
+    def setUp(self):
+        """Set up test case environment"""
         self.root = tk.Tk()
         self.app = AiderVoiceGUI(self.root)
-        # Force GUI setup
         self.app.setup_gui()
 
     def tearDown(self):
         """Clean up after each test"""
-        self.root.destroy()
+        if hasattr(self, 'root'):
+            self.root.destroy()
 
     def test_init(self):
         """Test initialization of GUI components"""
@@ -237,7 +271,18 @@ class TestAiderVoiceGUI(unittest.TestCase):
             loop.close()
             asyncio.set_event_loop(None)
 
+@pytest.fixture
+def buffer_manager():
+    """Fixture for AudioBufferManager instance"""
+    return AudioBufferManager(
+        max_size=1024,
+        chunk_size=256,
+        sample_rate=24000
+    )
+
 class TestAudioBufferManager(unittest.TestCase):
+    """Test suite for audio buffer management functionality"""
+    
     def setUp(self):
         """Set up test environment"""
         self.buffer_manager = AudioBufferManager(
@@ -306,7 +351,15 @@ class TestAudioBufferManager(unittest.TestCase):
             self.buffer_manager.combine_chunks(test_chunks)
         self.assertEqual(self.buffer_manager.stats["drops"], 1)
 
+@pytest.fixture
+def performance_monitor():
+    """Fixture for PerformanceMonitor instance"""
+    metrics = ["cpu", "memory", "latency"]
+    return PerformanceMonitor(metrics)
+
 class TestPerformanceMonitor(unittest.TestCase):
+    """Test suite for performance monitoring functionality"""
+    
     def setUp(self):
         """Set up test environment"""
         self.metrics = ["cpu", "memory", "latency"]
@@ -820,6 +873,16 @@ class TestClipboardManager(unittest.TestCase):
         mock_paste.return_value = "regular text"
         result = self.manager.get_current_content()
         self.assertEqual(result, "regular text")
+
+def run_async_test(coro):
+    """Helper function to run async tests"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
