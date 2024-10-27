@@ -11,6 +11,7 @@ from aider_wrapper import (
     PerformanceMonitor,
     WebSocketManager,
     VoiceCommandProcessor,
+    ClipboardManager,
 )
 
 class AsyncMock(MagicMock):
