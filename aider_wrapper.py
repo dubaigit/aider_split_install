@@ -1,9 +1,3 @@
-"""
-Voice-controlled Aider wrapper with GUI interface.
-Provides a graphical interface for interacting with Aider using voice commands,
-with support for audio processing, websocket communication, and clipboard management.
-"""
-
 # Standard library imports
 import argparse
 import asyncio
