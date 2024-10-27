@@ -537,25 +537,39 @@ class AiderVoiceGUI:
             try:
                 self.log_message(f"Connecting to OpenAI API (attempt {retries + 1}/{max_retries})...")
                 self.ws = await websockets.connect(
-                OPENAI_WEBSOCKET_URL,
-                extra_headers={
-                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
-                    "Content-Type": "application/json",
-                    "OpenAI-Beta": "realtime=v1"
-                }
-            )
-            
-            # Initialize session with correct configuration
-            await self.ws.send(json.dumps({
-                "type": "session.update",
-                "session": {
-                    "model": "gpt-4o",
-                    "voice": "alloy",
-                    "turn_detection": {
-                        "type": "server_vad",  # Required parameter
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 200,
-                        "silence_duration_ms": 300
+                    OPENAI_WEBSOCKET_URL,
+                    extra_headers={
+                        "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                        "Content-Type": "application/json",
+                        "OpenAI-Beta": "realtime=v1"
+                    }
+                )
+                
+                # Initialize session with correct configuration
+                await self.ws.send(json.dumps({
+                    "type": "session.update",
+                    "session": {
+                        "model": "gpt-4o",
+                        "voice": "alloy",
+                        "turn_detection": {
+                            "type": "server_vad",  # Required parameter
+                            "threshold": 0.5,
+                            "prefix_padding_ms": 200,
+                            "silence_duration_ms": 300
+                        }
+                    }
+                }))
+                
+                self.log_message("Connected to OpenAI realtime API")
+                return
+                
+            except Exception as e:
+                self.log_message(f"Failed to connect to OpenAI: {e}")
+                retries += 1
+                if retries < max_retries:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    raise
                     },
                     "temperature": 0.8,
                     "max_response_output_tokens": 2048,
