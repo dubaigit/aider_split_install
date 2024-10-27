@@ -1964,6 +1964,7 @@ class VoiceCommandProcessor:
         self.parent = parent
         self.audio_stream = None
         self.error_processor = ErrorProcessor(parent)
+        self.client = OpenAI()
         
     def preprocess_command(self, command):
         """Clean and normalize voice command"""
@@ -1980,7 +1981,7 @@ class VoiceCommandProcessor:
     async def process_voice_command(self):
         """Process voice commands using OpenAI's real-time API"""
         try:
-            stream = await openai.Audio.streaming(
+            stream = await self.client.audio.streaming(
                 model="whisper-1",
                 input=self.audio_stream,
                 response_format="text"
@@ -2047,7 +2048,7 @@ class ErrorProcessor:
             }
         ]
         try:
-            response = await openai.ChatCompletion.create(
+            response = await self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": str(error_context)}],
                 functions=functions
