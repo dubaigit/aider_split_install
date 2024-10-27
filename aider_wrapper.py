@@ -913,9 +913,11 @@ class AiderVoiceGUI:
                 if retries < max_retries:
                     await asyncio.sleep(retry_delay)
                 else:
-                    raise ConnectionError(f"Failed to connect after {max_retries} attempts: {e}")
+                    self.log_message(f"Failed to connect after {max_retries} attempts: {e}")
+                    return False
 
-        self.log_message("Failed to connect after all retries")
+        self.log_message("Failed to connect after all retries") 
+        return False
         self.stop_voice_control()
 
     async def process_audio_queue(self):
