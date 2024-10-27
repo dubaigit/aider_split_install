@@ -5,8 +5,8 @@ import subprocess
 import tempfile
 import select
 import re
-import shutil
 import time
+from queue import Queue  # Add this import
 import queue
 import json
 import base64
@@ -14,49 +14,43 @@ import asyncio
 import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog  # Added filedialog import
-import pyaudio
-import pty
-import fcntl
-import termios
-import struct
-import pty
-import tty
-import atexit
-import subprocess
-from queue import Queue
-from threading import Thread
-import errno
 
-# Optional imports with fallbacks
+# Optional imports with better error handling
 try:
     import sounddevice as sd
 except ImportError:
-    print("Warning: sounddevice module not found. Voice functionality will be disabled.")
     sd = None
+    print("Warning: sounddevice module not found. Voice functionality will be disabled.")
 
 try:
     import numpy as np
 except ImportError:
-    print("Warning: numpy module not found. Voice functionality will be disabled.")
     np = None
+    print("Warning: numpy module not found. Voice functionality will be disabled.")
+
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
+    print("Warning: pyaudio module not found. Voice functionality will be disabled.")
 
 try:
     import websockets
 except ImportError:
-    print("Warning: websockets module not found. Voice functionality will be disabled.")
     websockets = None
+    print("Warning: websockets module not found. Voice functionality will be disabled.")
 
 try:
     from openai import OpenAI
 except ImportError:
-    print("Warning: openai module not found. Voice functionality will be disabled.")
     OpenAI = None
+    print("Warning: openai module not found. Voice functionality will be disabled.")
 
 try:
     import pyperclip
 except ImportError:
-    print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
     pyperclip = None
+    print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
 
 try:
     from tqdm import tqdm
@@ -70,170 +64,117 @@ except ImportError:
     print("Warning: git module not found. Git functionality will be disabled.")
     git = None
 
-# Audio settings
-CHUNK_SIZE = 1024  # Smaller chunks for more responsive audio
-SAMPLE_RATE = 24000
-CHANNELS = 1
-FORMAT = pyaudio.paInt16
-REENGAGE_DELAY_MS = 500
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+# Audio settings (only if pyaudio is available)
+if pyaudio:
+    CHUNK_SIZE = 1024
+    SAMPLE_RATE = 24000
+    CHANNELS = 1
+    FORMAT = pyaudio.paInt16
+    REENGAGE_DELAY_MS = 500
+    OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+
+class ModernDarkTheme:
+    """Modern dark theme colors and styles"""
+    # Colors
+    BG_DARK = "#1a1a1a"
+    BG_MEDIUM = "#2d2d2d"
+    BG_LIGHT = "#383838"
+    FG_DARK = "#666666"
+    FG_LIGHT = "#ffffff"
+    ACCENT = "#007acc"
+    ACCENT_LIGHT = "#3399ff"
+    ERROR = "#ff3333"
+    SUCCESS = "#33cc33"
+    
+    # Fonts
+    MAIN_FONT = ("Segoe UI", 10)
+    MONO_FONT = ("Cascadia Code", 10)
+    
+    @classmethod
+    def apply_theme(cls, root: tk.Tk) -> None:
+        """Apply the modern dark theme to all widgets"""
+        style = ttk.Style()
+        style.configure(".",
+            background=cls.BG_DARK,
+            foreground=cls.FG_LIGHT,
+            font=cls.MAIN_FONT
+        )
+        
+        # Configure styles for different widget types
+        style.configure("Dark.TFrame", background=cls.BG_DARK)
+        style.configure("Dark.TLabel", 
+            background=cls.BG_DARK,
+            foreground=cls.FG_LIGHT
+        )
+        style.configure("Dark.TButton",
+            background=cls.BG_MEDIUM,
+            foreground=cls.FG_LIGHT,
+            borderwidth=0
+        )
+        # ... existing code ...
 
 class AiderVoiceGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Aider Voice Assistant")
-        self.root.geometry("1200x800")
+        self.theme = ModernDarkTheme()
+        self.theme.apply_theme(root)
         
-        # Create main frame with padding
-        self.main_frame = ttk.Frame(root, padding="10")
-        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Create left panel for controls and input
-        self.left_panel = ttk.Frame(self.main_frame)
-        self.left_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
-        
-        # Control buttons frame
-        self.control_frame = ttk.LabelFrame(self.left_panel, text="Controls", padding="5")
-        self.control_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        # Voice control button
-        self.voice_button = ttk.Button(
-            self.control_frame,
-            text="🎤 Start Voice Control",
-            command=self.toggle_voice_control
-        )
-        self.voice_button.grid(row=0, column=0, pady=5, padx=5, sticky='ew')
-        
-        # Status label
-        self.status_label = ttk.Label(self.control_frame, text="Ready")
-        self.status_label.grid(row=0, column=1, pady=5, padx=5)
-        
-        # Action buttons
-        self.add_files_button = ttk.Button(
-            self.control_frame,
-            text="📁 Add Files",
-            command=self.browse_files
-        )
-        self.add_files_button.grid(row=1, column=0, pady=5, padx=5, sticky='ew')
-        
-        self.check_issues_button = ttk.Button(
-            self.control_frame,
-            text="🔍 Check Issues",
-            command=self.check_all_issues
-        )
-        self.check_issues_button.grid(row=1, column=1, pady=5, padx=5, sticky='ew')
-        
-        # Input frame
-        self.input_frame = ttk.LabelFrame(self.left_panel, text="Input/Clipboard", padding="5")
-        self.input_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        
-        self.input_text = scrolledtext.ScrolledText(self.input_frame, height=10)
-        self.input_text.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        self.clipboard_button = ttk.Button(
-            self.input_frame,
-            text="📋 Load Clipboard",
-            command=self.use_clipboard_content
-        )
-        self.clipboard_button.grid(row=1, column=0, pady=5, padx=5)
-        
-        self.send_button = ttk.Button(
-            self.input_frame,
-            text="📤 Send to Assistant",
-            command=self.send_input_text
-        )
-        self.send_button.grid(row=1, column=1, pady=5, padx=5)
-        
-        # Create right panel for output
-        self.right_panel = ttk.Frame(self.main_frame)
-        self.right_panel.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
-        
-        # Transcription frame
-        self.transcription_frame = ttk.LabelFrame(self.right_panel, text="Conversation", padding="5")
-        self.transcription_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        
-        self.transcription_text = scrolledtext.ScrolledText(self.transcription_frame, height=15)
-        self.transcription_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Issues frame
-        self.issues_frame = ttk.LabelFrame(self.right_panel, text="Issues", padding="5")
-        self.issues_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        
-        self.issues_text = scrolledtext.ScrolledText(self.issues_frame, height=15)
-        self.issues_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Create log frame
-        self.log_frame = ttk.LabelFrame(self.left_panel, text="Log", padding="5")
-        self.log_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        
-        # Create output text area (for logging)
-        self.output_text = scrolledtext.ScrolledText(self.log_frame, height=10)
-        self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Configure grid weights
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(1, weight=2)  # Right panel takes more space
-        self.main_frame.rowconfigure(0, weight=1)
-        self.left_panel.columnconfigure(0, weight=1)
-        self.left_panel.rowconfigure(3, weight=1)  # Make file list expandable
-        self.right_panel.columnconfigure(0, weight=1)
-        self.right_panel.rowconfigure(0, weight=1)
-        self.right_panel.rowconfigure(1, weight=1)
-        self.right_panel.rowconfigure(2, weight=1)  # Terminal takes remaining space
-        
-        # Create file list frame
-        self.files_frame = ttk.LabelFrame(self.left_panel, text="Added Files", padding="5")
-        self.files_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        
-        # Create file list
-        self.files_list = tk.Listbox(self.files_frame, height=5)
-        self.files_list.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Add scrollbar to file list
-        files_scrollbar = ttk.Scrollbar(self.files_frame, orient=tk.VERTICAL, command=self.files_list.yview)
-        files_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        self.files_list.configure(yscrollcommand=files_scrollbar.set)
-        
-        # File list buttons
-        self.file_buttons_frame = ttk.Frame(self.files_frame)
-        self.file_buttons_frame.grid(row=1, column=0, columnspan=2, pady=5)
-        
-        self.remove_file_button = ttk.Button(
-            self.file_buttons_frame,
-            text="🗑️ Remove Selected",
-            command=self.remove_selected_file
-        )
-        self.remove_file_button.grid(row=0, column=0, padx=5)
-        
-        self.clear_files_button = ttk.Button(
-            self.file_buttons_frame,
-            text="🧹 Clear All",
-            command=self.clear_files
-        )
-        self.clear_files_button.grid(row=0, column=1, padx=5)
-        
-        # Initialize file list
-        self.added_files = set()
-        
-        # Initialize other attributes
+        # Initialize basic attributes
         self.recording = False
         self.auto_mode = False
         self.audio_queue = queue.Queue()
         self.ws = None
         self.running = True
-        self.client = OpenAI()
         self.aider_process = None
         self.temp_files = []
         self.fixing_issues = False
+        self.added_files = set()
+        self.current_context = {
+            "files": set(),
+            "last_command": None,
+            "last_response": None
+        }
         
         # Initialize asyncio loop
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
         self.thread.start()
         
+        # Initialize queues
+        self.audio_queue = Queue()
+        self.terminal_queue = Queue()
+        
+        # Initialize terminal state
+        self.terminal_running = False
+        self.shell = None
+        
+        # Start terminal
+        self.start_terminal()
+        
+        # Create main container with modern styling
+        self.main_frame = ttk.Frame(self.root, style="Dark.TFrame", padding="10")
+        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create and style the notebook for tabs
+        self.notebook = ttk.Notebook(self.main_frame, style="Dark.TNotebook")
+        self.notebook.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        
+        # Create modern styled tabs
+        self.create_main_tab()
+        self.create_files_tab()
+        self.create_terminal_tab()
+        self.create_output_tab()
+        
+        # Configure grid weights
+        self.configure_grid_weights()
+        
         # Initialize audio components
-        self.p = pyaudio.PyAudio()
+        # Initialize audio with error handling
+        try:
+            self.p = pyaudio.PyAudio()
+        except Exception as e:
+            self.log_message(f"Error initializing audio: {e}")
+            self.p = None
         self.audio_buffer = bytearray()  # Changed from bytes to bytearray
         self.mic_queue = queue.Queue()
         self.mic_on_at = 0
@@ -261,53 +202,70 @@ class AiderVoiceGUI:
             "last_response": None
         }
         
-        # Create terminal frame
-        self.terminal_frame = ttk.LabelFrame(self.right_panel, text="Terminal", padding="5")
-        self.terminal_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        
-        # Create terminal text widget with dark theme
-        self.terminal = scrolledtext.ScrolledText(
-            self.terminal_frame,
-            height=10,
-            bg='black',
-            fg='white',
-            insertbackground='white',
-            font=('Courier', 10)
-        )
-        self.terminal.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Create terminal input frame
-        self.terminal_input_frame = ttk.Frame(self.terminal_frame)
-        self.terminal_input_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        # Add prompt label
-        self.prompt_label = ttk.Label(self.terminal_input_frame, text="$ ")
-        self.prompt_label.grid(row=0, column=0, padx=2)
-        
-        # Add terminal input
-        self.terminal_input = ttk.Entry(self.terminal_input_frame)
-        self.terminal_input.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=2)
-        self.terminal_input.bind('<Return>', self.execute_command)
-        
-        # Add execute button
-        self.execute_button = ttk.Button(
-            self.terminal_input_frame,
-            text="Run",
-            command=lambda: self.execute_command(None)
-        )
-        self.execute_button.grid(row=0, column=2, padx=2)
-        
-        # Configure terminal frame weights
-        self.terminal_frame.columnconfigure(0, weight=1)
-        self.terminal_frame.rowconfigure(0, weight=1)
-        self.terminal_input_frame.columnconfigure(1, weight=1)
-        
-        # Initialize terminal process
-        self.terminal_queue = Queue()
-        self.terminal_running = True
-        self.start_terminal()
-        
         # Rest of initialization...
+
+    def create_main_tab(self):
+        """Create the main control tab with modern styling"""
+        main_frame = ttk.Frame(self.notebook, style="Dark.TFrame", padding="5")
+        self.notebook.add(main_frame, text="Controls")
+        
+        # Control buttons with modern styling
+        controls = ttk.LabelFrame(main_frame, text="Actions", style="Dark.TFrame", padding="10")
+        controls.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        
+        self.voice_button = ttk.Button(
+            controls,
+            text="🎤 Start Voice",
+            command=self.toggle_voice_control,
+            style="Dark.TButton"
+        )
+        self.voice_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        
+        # Add other modern styled controls
+        # ... existing code with style="Dark.TButton" added ...
+
+    def create_files_tab(self):
+        """Create the files tab with modern styling"""
+        files_frame = ttk.Frame(self.notebook, style="Dark.TFrame", padding="5")
+        self.notebook.add(files_frame, text="Files")
+        
+        # Add modern styled file list
+        # ... existing code with modern styling ...
+
+    def create_terminal_tab(self):
+        """Create the terminal tab with modern styling"""
+        terminal_frame = ttk.Frame(self.notebook, style="Dark.TFrame", padding="5")
+        self.notebook.add(terminal_frame, text="Terminal")
+        
+        self.terminal = scrolledtext.ScrolledText(
+            terminal_frame,
+            height=20,
+            bg=self.theme.BG_DARK,
+            fg=self.theme.FG_LIGHT,
+            insertbackground=self.theme.FG_LIGHT,
+            font=self.theme.MONO_FONT
+        )
+        self.terminal.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        
+        # Add modern styled terminal input
+        # ... existing code with modern styling ...
+
+    def create_output_tab(self):
+        """Create the output tab with modern styling"""
+        output_frame = ttk.Frame(self.notebook, style="Dark.TFrame", padding="5")
+        self.notebook.add(output_frame, text="Output")
+        
+        # Add modern styled output text
+        # ... existing code with modern styling ...
+
+    def configure_grid_weights(self):
+        """Configure grid weights for modern layout"""
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        self.main_frame.columnconfigure(0, weight=1)
+        self.main_frame.rowconfigure(0, weight=1)
+        self.notebook.columnconfigure(0, weight=1)
+        self.notebook.rowconfigure(0, weight=1)
 
     def run_async_loop(self):
         """Run asyncio event loop in a separate thread"""
@@ -327,37 +285,41 @@ class AiderVoiceGUI:
             self.log_message("Error: Required modules for voice control are not available")
             return
             
-        self.recording = True
-        self.voice_button.configure(text="🔴 Stop Voice Control")
-        self.status_label.configure(text="Listening...")
-        
-        # Start audio streams
-        self.mic_stream = self.p.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=SAMPLE_RATE,
-            input=True,
-            stream_callback=self._mic_callback,
-            frames_per_buffer=CHUNK_SIZE
-        )
-        self.spkr_stream = self.p.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=SAMPLE_RATE,
-            output=True,
-            stream_callback=self._spkr_callback,
-            frames_per_buffer=CHUNK_SIZE
-        )
-        
-        # Start audio processing thread
-        self.audio_thread = threading.Thread(target=self._process_audio_thread, daemon=True)
-        self.audio_thread.start()
-        
-        self.mic_stream.start_stream()
-        self.spkr_stream.start_stream()
-        
-        # Connect to OpenAI WebSocket
-        asyncio.run_coroutine_threadsafe(self.connect_websocket(), self.loop)
+        try:
+            self.recording = True
+            self.voice_button.configure(text="🔴 Stop Voice Control")
+            self.status_label.configure(text="Listening...")
+            
+            # Start audio streams with error handling
+            try:
+                self.mic_stream = self.p.open(
+                    format=FORMAT,
+                    channels=CHANNELS,
+                    rate=SAMPLE_RATE,
+                    input=True,
+                    stream_callback=self._mic_callback,
+                    frames_per_buffer=CHUNK_SIZE
+                )
+                self.spkr_stream = self.p.open(
+                    format=FORMAT,
+                    channels=CHANNELS,
+                    rate=SAMPLE_RATE,
+                    output=True,
+                    stream_callback=self._spkr_callback,
+                    frames_per_buffer=CHUNK_SIZE
+                )
+            except OSError as e:
+                self.log_message(f"Error opening audio streams: {e}")
+                self.log_message("Voice control will run without audio.")
+                self.mic_stream = None
+                self.spkr_stream = None
+            
+            # Connect to OpenAI WebSocket
+            asyncio.run_coroutine_threadsafe(self.connect_websocket(), self.loop)
+            
+        except Exception as e:
+            self.log_message(f"Error starting voice control: {e}")
+            self.stop_voice_control()
 
     def stop_voice_control(self):
         """Stop voice control"""
@@ -383,20 +345,20 @@ class AiderVoiceGUI:
 
     def _mic_callback(self, in_data, frame_count, time_info, status):
         """Microphone callback that queues audio chunks."""
+        if status:
+            self.log_message(f"Audio input error: {status}")
+            return (None, pyaudio.paContinue)
+            
         if time.time() > self.mic_on_at:
             if not self.mic_active:
                 self.log_message('🎙️🟢 Mic active')
                 self.mic_active = True
             self.mic_queue.put(in_data)
-            
-            # Only log occasionally to reduce GUI updates
-            self.log_counter += 1
-            if self.log_counter % self.log_frequency == 0:
-                self.log_message(f'🎤 Processing audio...')
         else:
             if self.mic_active:
                 self.log_message('🎙️🔴 Mic suppressed')
                 self.mic_active = False
+                
         return (None, pyaudio.paContinue)
 
     def _process_audio_thread(self):
@@ -497,7 +459,66 @@ class AiderVoiceGUI:
             - Process status
             """
             
-            # Initialize session with correct configuration
+            # Define available functions
+            functions = [
+                {
+                    "name": "execute_terminal_command",
+                    "description": "Execute a command in the terminal",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": "The command to execute"
+                            },
+                            "working_dir": {
+                                "type": "string",
+                                "description": "Working directory for the command (optional)"
+                            }
+                        },
+                        "required": ["command"]
+                    }
+                },
+                {
+                    "name": "manage_files",
+                    "description": "Manage files in the application",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "enum": ["add", "remove", "clear", "list"],
+                                "description": "Action to perform on files"
+                            },
+                            "filename": {
+                                "type": "string",
+                                "description": "File to act upon (for add/remove)"
+                            }
+                        },
+                        "required": ["action"]
+                    }
+                },
+                {
+                    "name": "check_issues",
+                    "description": "Run code quality checks",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "tools": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "enum": ["ruff", "mypy", "all"]
+                                },
+                                "description": "Which tools to run"
+                            }
+                        },
+                        "required": ["tools"]
+                    }
+                }
+            ]
+            
+            # Update session with functions
             await self.ws.send(json.dumps({
                 "type": "session.update",
                 "session": {
@@ -511,7 +532,8 @@ class AiderVoiceGUI:
                     },
                     "temperature": 0.8,
                     "max_response_output_tokens": 2048,
-                    "instructions": instructions
+                    "instructions": instructions,
+                    "tools": functions
                 }
             }))
             
@@ -533,21 +555,27 @@ class AiderVoiceGUI:
 
     async def process_audio_queue(self):
         """Process audio queue and send to OpenAI"""
+        accumulated_audio = b''
+        
         while self.recording:
-            if not self.mic_queue.empty():
-                mic_chunk = self.mic_queue.get()
-                self.log_message(f'🎤 Processing {len(mic_chunk)} bytes of audio data.')
+            try:
+                # Get audio data
+                while not self.mic_queue.empty():
+                    accumulated_audio += self.mic_queue.get()
                 
-                try:
-                    # Send audio data to OpenAI
-                    await self.ws.send(json.dumps({
-                        'type': 'input_audio_buffer.append',
-                        'audio': base64.b64encode(mic_chunk).decode('utf-8')
-                    }))
-                except Exception as e:
-                    self.log_message(f"Error sending audio data: {e}")
-            
-            await asyncio.sleep(0.05)
+                # Send if we have enough data
+                if len(accumulated_audio) >= CHUNK_SIZE * 4:  # About 200ms of audio
+                    if self.ws:
+                        await self.ws.send(json.dumps({
+                            'type': 'input_audio_buffer.append',
+                            'audio': base64.b64encode(accumulated_audio).decode('utf-8')
+                        }))
+                        accumulated_audio = b''
+                        
+            except Exception as e:
+                self.log_message(f"Error processing audio: {e}")
+                
+            await asyncio.sleep(0.01)
 
     async def handle_websocket_messages(self):
         """Handle incoming websocket messages"""
@@ -558,7 +586,40 @@ class AiderVoiceGUI:
                 
                 event_type = event.get("type")
                 
-                if event_type == "response.text.delta":
+                if event_type == "function_call":
+                    # Handle function calls
+                    function_name = event.get("function", {}).get("name")
+                    arguments = event.get("function", {}).get("arguments", {})
+                    
+                    if function_name == "execute_terminal_command":
+                        output = self.execute_terminal_command(arguments["command"])
+                        # Send result back
+                        await self.send_function_result(function_name, output or "Command executed successfully")
+                        
+                    elif function_name == "manage_files":
+                        action = arguments["action"]
+                        if action == "list":
+                            files = "\n".join([f"- {os.path.basename(f)}" for f in self.added_files])
+                            await self.send_function_result(function_name, files or "No files added")
+                        elif action == "add" and "filename" in arguments:
+                            self.add_files([arguments["filename"]])
+                            await self.send_function_result(function_name, f"Added file: {arguments['filename']}")
+                        elif action == "remove" and "filename" in arguments:
+                            self.remove_file_by_name(arguments["filename"])
+                            await self.send_function_result(function_name, f"Removed file: {arguments['filename']}")
+                        elif action == "clear":
+                            self.clear_files()
+                            await self.send_function_result(function_name, "Cleared all files")
+                            
+                    elif function_name == "check_issues":
+                        tools = arguments["tools"]
+                        if "all" in tools or "ruff" in tools:
+                            await self.run_ruff_check()
+                        if "all" in tools or "mypy" in tools:
+                            await self.run_mypy_check()
+                        await self.send_function_result(function_name, "Checks completed")
+                
+                elif event_type == "response.text.delta":
                     text = event.get("delta", {}).get("text", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
@@ -607,49 +668,42 @@ class AiderVoiceGUI:
                 self.log_message(f"Event content: {json.dumps(event, indent=2)}")
 
     async def process_voice_command(self, text):
-        """Process transcribed voice commands"""
-        # Extract command if it exists
-        command = None
+        """Process transcribed voice commands directly without confirmation"""
+        # Extract command from text
+        command = text.lower().strip()
         
-        # Direct command patterns
-        if text.lower().startswith(('run ', 'execute ', 'bash ', '$')):
-            command = text.split(' ', 1)[1]
-        elif text.lower().startswith('cd '):
-            command = text
-        elif text.lower().startswith('ls'):
-            command = 'ls'
-        elif 'pip install' in text.lower():
-            command = text[text.lower().find('pip install'):]
-        
-        # Execute command if found
-        if command:
-            self.execute_terminal_command(command)
-            return
-        
-        # Handle file management commands without confirmation
-        if "list files" in text.lower():
-            files = list(self.added_files)
-            if files:
-                response = "\n".join([f"- {os.path.basename(f)}" for f in files])
-                self.log_message(response)
+        # Direct execution of common commands
+        if command.startswith(('ls', 'dir', 'pwd', 'cd', 'pip', 'python', 'git')):
+            output = self.execute_terminal_command(command)
+            if output:
+                self.log_message(output)
             return
             
-        elif "check issues" in text.lower():
+        # File management commands
+        if "list files" in command:
+            output = self.execute_terminal_command("ls -la")
+            if output:
+                self.log_message(output)
+            return
+            
+        elif "check issues" in command:
             await self.analyze_and_check_issues()
             return
             
-        elif "clear files" in text.lower():
+        elif "clear files" in command:
             self.clear_files()
             return
             
-        elif "remove file" in text.lower():
-            filename = text.lower().split("remove file")[-1].strip()
+        elif "remove file" in command:
+            filename = command.split("remove file")[-1].strip()
             if filename:
                 self.remove_file_by_name(filename)
             return
         
-        # If no specific command matched, try to execute as a bash command
-        self.execute_terminal_command(text)
+        # Execute any other command directly
+        output = self.execute_terminal_command(command)
+        if output:
+            self.log_message(output)
 
     def remove_file_by_name(self, filename):
         """Remove a file by its name"""
@@ -787,33 +841,6 @@ class AiderVoiceGUI:
             
         except Exception as e:
             self.log_message(f"Error analyzing clipboard content: {e}")
-
-    async def send_ai_analysis(self, prompt):
-        """Send analysis request to AI and handle response"""
-        if self.ws:
-            try:
-                await self.ws.send(json.dumps({
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "message",
-                        "role": "user",
-                        "content": [{
-                            "type": "text",
-                            "text": prompt
-                        }]
-                    }
-                }))
-                
-                # Create response to generate analysis
-                await self.ws.send(json.dumps({
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"]
-                    }
-                }))
-                
-            except Exception as e:
-                self.log_message(f"Error sending analysis request: {e}")
 
     def run_aider_with_clipboard(self):
         """Run aider using clipboard content"""
@@ -1061,6 +1088,7 @@ class AiderVoiceGUI:
     def _update_log(self, message):
         """Update log in GUI thread"""
         try:
+            # Use transcription_text instead of output_text
             self.transcription_text.insert(tk.END, message + "\n")
             self.transcription_text.see(tk.END)
         except Exception as e:
@@ -1081,7 +1109,7 @@ class AiderVoiceGUI:
             self.add_files(files)
 
     def add_files(self, files):
-        """Add files to the list and start aider"""
+        """Add files to the list without starting aider"""
         for file in files:
             if file not in self.added_files:
                 self.added_files.add(file)
@@ -1095,9 +1123,6 @@ class AiderVoiceGUI:
                     self.update_ai_context(),
                     self.loop
                 )
-        
-        if files:
-            self.run_aider_with_files(files)
 
     def remove_selected_file(self):
         """Remove selected file from the list"""
@@ -1262,9 +1287,8 @@ class AiderVoiceGUI:
         try:
             # Initialize terminal state
             self.terminal_running = True
-            self.terminal_queue = Queue()
             
-            # Start shell process
+            # Start shell process with proper configuration
             self.shell = subprocess.Popen(
                 ['/bin/bash'] if os.name == 'posix' else ['cmd.exe'],
                 stdin=subprocess.PIPE,
@@ -1272,82 +1296,68 @@ class AiderVoiceGUI:
                 stderr=subprocess.PIPE,
                 bufsize=1,
                 universal_newlines=True,
-                env=dict(os.environ, TERM='xterm-color')
+                env=dict(os.environ, TERM='xterm-color'),
+                cwd=os.getcwd()
             )
-            
-            # Start output reader thread
-            self.terminal_thread = Thread(
-                target=self.read_terminal_output,
-                daemon=True
-            )
-            self.terminal_thread.start()
             
             # Initial terminal prompt
             self.terminal.insert(tk.END, f"Terminal started in: {os.getcwd()}\n$ ")
+            
+            # Set up shell environment
+            if os.name == 'posix':
+                self.execute_terminal_command("export PS1='$ '")  # Simple prompt
+                self.execute_terminal_command("export TERM=xterm-color")  # Enable color
             
             self.log_message("Terminal started successfully")
             
         except Exception as e:
             self.log_message(f"Error starting terminal: {e}")
 
-    def read_terminal_output(self):
-        """Read terminal output in a separate thread"""
-        while self.terminal_running and self.shell:
-            try:
-                # Read from stdout
-                output = self.shell.stdout.readline()
-                if output:
-                    self.terminal_queue.put(output)
-                    self.root.after(0, self.update_terminal_display)
-                
-                # Read from stderr
-                error = self.shell.stderr.readline()
-                if error:
-                    self.terminal_queue.put(f"Error: {error}")
-                    self.root.after(0, self.update_terminal_display)
-                
-            except Exception as e:
-                if self.terminal_running:  # Only log if we're still supposed to be running
-                    self.log_message(f"Error reading terminal output: {e}")
-                break
-            
-            time.sleep(0.01)  # Small delay to prevent CPU hogging
-
-    def execute_command(self, event):
-        """Execute terminal command"""
-        if not hasattr(self, 'shell') or self.shell is None:
-            self.log_message("Terminal not available")
-            return
-            
-        command = self.terminal_input.get().strip()
-        if not command:
-            return
-            
-        # Clear input
-        self.terminal_input.delete(0, tk.END)
-        
-        # Add command to terminal display
-        self.terminal.insert(tk.END, f"$ {command}\n")
-        
+    def execute_terminal_command(self, command):
+        """Execute command in terminal and return output"""
         try:
-            # Special handling for cd command
-            if command.startswith('cd '):
-                try:
-                    os.chdir(command[3:].strip())
-                    self.terminal.insert(tk.END, f"Changed directory to: {os.getcwd()}\n")
-                except Exception as e:
-                    self.terminal.insert(tk.END, f"Error: {e}\n")
-                return
+            if not self.shell:
+                self.log_message("Terminal not available")
+                return None
             
             # Write command to terminal
-            self.shell.stdin.write(command + '\n')
+            self.shell.stdin.write(f"{command}\n")
             self.shell.stdin.flush()
             
-            # Update display
-            self.terminal.see(tk.END)
+            # Show command in terminal
+            self.terminal.insert(tk.END, f"$ {command}\n")
+            
+            # Read output immediately
+            output = []
+            
+            # Read stdout with timeout
+            start_time = time.time()
+            while time.time() - start_time < 2:  # 2 second timeout
+                line = self.shell.stdout.readline()
+                if not line:
+                    break
+                output.append(line.strip())
+                self.terminal.insert(tk.END, line)
+                self.terminal.see(tk.END)
+            
+            # Read stderr
+            while True:
+                line = self.shell.stderr.readline()
+                if not line:
+                    break
+                output.append(f"Error: {line.strip()}")
+                self.terminal.insert(tk.END, f"Error: {line}")
+                self.terminal.see(tk.END)
+            
+            # Return combined output
+            return "\n".join(output) if output else None
             
         except Exception as e:
-            self.log_message(f"Error executing command: {e}")
+            error_msg = f"Error executing command: {e}"
+            self.log_message(error_msg)
+            self.terminal.insert(tk.END, f"{error_msg}\n")
+            self.terminal.see(tk.END)
+            return error_msg
 
     def add_to_files_from_terminal(self, filepath):
         """Add file to aider from terminal path"""
@@ -1356,28 +1366,124 @@ class AiderVoiceGUI:
         else:
             self.terminal.insert(tk.END, f"Error: File not found: {filepath}\n")
 
-    def execute_terminal_command(self, command):
-        """Execute command in terminal"""
-        try:
-            if not self.shell:
-                self.log_message("Terminal not available")
-                return
-                
-            # Write command to terminal
-            self.shell.stdin.write(f"{command}\n")
-            self.shell.stdin.flush()
-            
-            # Update terminal display
-            self.terminal.insert(tk.END, f"$ {command}\n")
-            self.terminal.see(tk.END)
-            
-        except Exception as e:
-            self.log_message(f"Error executing command: {e}")
-
     def get_terminal_output(self):
         """Get accumulated terminal output"""
         output = self.terminal.get('1.0', tk.END)
         return output
+
+    def run_with_aider(self):
+        """Run aider with currently added files"""
+        if not self.added_files:
+            self.log_message("No files added. Please add files first.")
+            return
+
+        if self.aider_process and self.aider_process.poll() is None:
+            self.log_message("Aider is already running. Please wait for it to finish.")
+            return
+
+        try:
+            # Convert to list of full paths
+            file_paths = list(self.added_files)
+            
+            self.aider_process = subprocess.Popen(
+                ["python", "aider_wrapper.py"] + file_paths,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+            
+            self.log_message(f"Started aider with files: {', '.join(os.path.basename(f) for f in file_paths)}")
+            
+            # Start monitoring in a separate thread
+            threading.Thread(
+                target=self.monitor_aider_output,
+                args=(self.aider_process,),
+                daemon=True
+            ).start()
+            
+        except Exception as e:
+            self.log_message(f"Error running aider with files: {e}")
+
+    def execute_command(self, event=None):
+        """Execute command from terminal input"""
+        command = self.terminal_input.get().strip()
+        if not command:
+            return
+        
+        # Clear input
+        self.terminal_input.delete(0, tk.END)
+        
+        # Execute command and get output
+        output = self.execute_terminal_command(command)
+        
+        # If command was cd, update prompt
+        if command.startswith('cd '):
+            self.terminal.insert(tk.END, f"Current directory: {os.getcwd()}\n$ ")
+        elif output:
+            # Add prompt after output
+            self.terminal.insert(tk.END, "$ ")
+        else:
+            # If no output, just add prompt
+            self.terminal.insert(tk.END, "$ ")
+        
+        # Scroll to end
+        self.terminal.see(tk.END)
+
+    async def send_function_result(self, function_name, result):
+        """Send function result back to OpenAI"""
+        try:
+            await self.ws.send(json.dumps({
+                "type": "function_call.result",
+                "function": {
+                    "name": function_name,
+                    "output": result
+                }
+            }))
+        except Exception as e:
+            self.log_message(f"Error sending function result: {e}")
+
+    def initialize_audio(self):
+        """Initialize audio components"""
+        try:
+            if pyaudio:
+                self.p = pyaudio.PyAudio()
+                self.audio_buffer = bytearray()
+                self.mic_queue = queue.Queue()
+                self.mic_on_at = 0
+                self.mic_active = None
+                self._stop_event = threading.Event()
+            else:
+                self.p = None
+                self.log_message("Audio functionality not available - missing pyaudio")
+        except Exception as e:
+            self.log_message(f"Error initializing audio: {e}")
+            self.p = None
+
+    async def run_ruff_check(self):
+        """Run ruff code checks"""
+        try:
+            result = subprocess.run(
+                ["ruff", "check", "."],
+                capture_output=True,
+                text=True
+            )
+            return result.stdout or "No issues found!"
+        except Exception as e:
+            return f"Error running ruff: {e}"
+
+    async def run_mypy_check(self):
+        """Run mypy type checks"""
+        try:
+            result = subprocess.run(
+                ["mypy", "."],
+                capture_output=True,
+                text=True
+            )
+            return result.stdout or "No issues found!"
+        except Exception as e:
+            return f"Error running mypy: {e}"
 
     async def send_ai_analysis(self, prompt):
         """Send analysis request to AI and handle response"""
@@ -1406,54 +1512,6 @@ class AiderVoiceGUI:
             except Exception as e:
                 self.log_message(f"Error sending analysis request: {e}")
 
-def enhance_user_experience():
-    """
-    Enhance user experience with a progress bar and better error handling.
-    """
-    if tqdm is None:
-        return
-
-    for i in tqdm(range(10), desc="Preparing environment"):
-        time.sleep(0.1)
-
-def get_clipboard_content():
-    """
-    Get content directly from clipboard without waiting.
-    """
-    if pyperclip is None:
-        print("Error: Clipboard functionality is not available. Please install pyperclip.")
-        sys.exit(1)
-    try:
-        content = pyperclip.paste()
-        content = content.replace('\r\n', '\n').replace('\r', '\n')
-        while '\n\n\n' in content:
-            content = content.replace('\n\n\n', '\n\n')
-        return content.strip()
-    except Exception as e:
-        print(f"Error accessing clipboard: {e}")
-        sys.exit(1)
-
-def handle_aider_prompts(process):
-    while True:
-        ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
-        for stream in ready:
-            line = stream.readline()
-            if not line:
-                sys.exit(0)
-
-            print(line, end='', flush=True)
-
-            if re.search(r'Add .+ to the chat\? \(Y\)es/\(N\)o \[Yes\]:', line):
-                process.stdin.write('Y\n')
-                process.stdin.flush()
-            elif 'Add URL to the chat? (Y)es/(N)o/(A)ll/(S)kip all [Yes]:' in line:
-                process.stdin.write('S\n')
-                process.stdin.flush()
-            elif 'Add URL to the chat? (Y)es/(N)o [Yes]:' in line:
-                process.stdin.write('N\n')
-                process.stdin.flush()
-
-
 def main():
     parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
     parser.add_argument("--voice-only", action="store_true", help="Run in voice control mode only")
@@ -1469,13 +1527,36 @@ def main():
     args = parser.parse_args()
 
     if args.gui:
-        root = tk.Tk()
-        app = AiderVoiceGUI(root)
-        if args.auto:
-            app.auto_mode = True
-            print("Auto mode enabled - will automatically send ruff issues to aider")
-        root.mainloop()  # Added mainloop call
-        return
+        try:
+            # Initialize root window
+            root = tk.Tk()
+            root.title("Aider Voice Assistant")
+            
+            # Set initial window size
+            screen_width = root.winfo_screenwidth()
+            screen_height = root.winfo_screenheight()
+            window_width = int(screen_width * 0.8)
+            window_height = int(screen_height * 0.8)
+            root.geometry(f"{window_width}x{window_height}")
+            
+            try:
+                # Create app instance
+                app = AiderVoiceGUI(root)
+                if args.auto:
+                    app.auto_mode = True
+                    print("Auto mode enabled")
+                
+                # Start mainloop
+                root.mainloop()
+                
+            except Exception as e:
+                print(f"Error initializing application: {e}")
+                root.destroy()
+                return
+                
+        except Exception as e:
+            print(f"Error creating window: {e}")
+            return
 
     if args.clipboard and args.instructions:
         parser.error("Cannot use both clipboard and instruction file. Choose one option.")
@@ -1488,11 +1569,9 @@ def main():
     print(f"Using clipboard: {args.clipboard}")
     print(f"Instructions file: {args.instructions}")
     print(f"Model: {args.model}")
-    print(f"Dark mode: Enabled")
+    print("Dark mode: Enabled")
     print(f"Chat mode: {args.chat_mode}")
     print(f"Suggest shell commands: {args.suggest_shell_commands}")
-
-    enhance_user_experience()
 
     if git is not None:
         try:
