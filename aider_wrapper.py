@@ -42,17 +42,6 @@ except ImportError:
     print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
     pyperclip = None
 
-try:
-    from tqdm import tqdm
-except ImportError:
-    print("Warning: tqdm module not found. Progress bar functionality will be disabled.")
-    tqdm = None
-
-try:
-    import git
-except ImportError:
-    print("Warning: git module not found. Git functionality will be disabled.")
-    git = None
 
 # Audio settings
 CHUNK_SIZE = 1024  # Smaller chunks for more responsive audio
@@ -127,7 +116,7 @@ class PerformanceMonitor:
     def reset(self):
         """Reset all metrics"""
         self.metrics = {m: [] for m in self.metrics}
-        
+
     @contextmanager
     def measure(self, metric):
         """Context manager to measure execution time of a block"""
@@ -217,7 +206,7 @@ class AiderVoiceGUI:
         
         # Initialize all attributes that were previously defined outside __init__
         self.audio_buffer = bytearray()
-        self.mic_stream = None 
+        self.mic_stream = None
         self.spkr_stream = None
         
         # Core state
