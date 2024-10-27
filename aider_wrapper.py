@@ -429,61 +429,30 @@ class AiderVoiceGUI:
                     "model": "gpt-4o",
                     "voice": "alloy",
                     "turn_detection": {
-                        "type": "server_vad",  # Required parameter
+                        "type": "server_vad",
                         "threshold": 0.5,
                         "prefix_padding_ms": 200,
                         "silence_duration_ms": 300
                     },
                     "temperature": 0.8,
                     "max_response_output_tokens": 2048,
-                    "functions": [
-                        {
-                            "name": "add_files",
-                            "description": "Add files to the assistant for analysis.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "file_paths": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "List of file paths to add."
-                                    }
-                                },
-                                "required": ["file_paths"]
-                            }
-                        },
-                        {
-                            "name": "check_issues",
-                            "description": "Check the added files for issues.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        },
-                        {
-                            "name": "run_aider_with_clipboard",
-                            "description": "Run Aider with clipboard content.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        },
-                        {
-                            "name": "list_files",
-                            "description": "List all currently added files.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        }
-                    ],
                     "instructions": """
                     You are an AI assistant that helps control the Aider code assistant through voice commands.
-                    Use the provided functions to:
-                    - Run Aider with clipboard content (run_aider_with_clipboard)
-                    - Add files to Aider (add_files)
-                    - Check for issues (check_issues)
-                    - List added files (list_files)
+                    
+                    When a file is added:
+                    1. Acknowledge the file addition
+                    2. Provide a summary of the file contents (imports, classes, functions)
+                    3. Ask if the user wants to analyze for issues or make changes
+                    
+                    When checking for issues:
+                    1. Summarize the number and types of issues found
+                    2. Ask if the user wants to fix them using Aider
+                    
+                    Commands you understand:
+                    - Run Aider with clipboard content
+                    - Add files to Aider (from current directory)
+                    - Check for issues and send to Aider
+                    - Summarize what happened when Aider finishes
                     
                     Always confirm what action you're taking and provide clear feedback.
                     Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
@@ -497,7 +466,7 @@ class AiderVoiceGUI:
             # Initialize response state
             self.response_active = False
             self.last_transcript_id = None
-            self.audio_buffer = bytearray()  # Changed from bytes to bytearray
+            self.audio_buffer = bytearray()
             self.last_audio_time = time.time()
             
             # Start message handling
@@ -527,7 +496,7 @@ class AiderVoiceGUI:
             await asyncio.sleep(0.05)
     
     async def handle_websocket_messages(self):
-        """Handle incoming websocket messages, including function calls."""
+        """Handle incoming websocket messages"""
         while self.ws and self.recording:
             try:
                 message = await self.ws.recv()
@@ -535,38 +504,7 @@ class AiderVoiceGUI:
                 
                 event_type = event.get("type")
                 
-                if event_type == "response.function_call":
-                    function_call = event.get("delta", {}).get("function_call", {})
-                    function_name = function_call.get("name")
-                    arguments = json.loads(function_call.get("arguments", "{}"))
-
-                    # Execute the local function
-                    if function_name and hasattr(self, function_name):
-                        self.log_message(f"Executing function: {function_name}")
-                        function = getattr(self, function_name)
-                        try:
-                            if asyncio.iscoroutinefunction(function):
-                                result = await function(**arguments)
-                            else:
-                                result = function(**arguments)
-
-                            # Send the result back to the assistant
-                            await self.ws.send(json.dumps({
-                                "type": "function_call.result",
-                                "name": function_name,
-                                "result": result
-                            }))
-                        except Exception as e:
-                            self.log_message(f"Error executing function {function_name}: {e}")
-                            await self.ws.send(json.dumps({
-                                "type": "function_call.error",
-                                "name": function_name,
-                                "error": str(e)
-                            }))
-                    else:
-                        self.log_message(f"Unknown function called: {function_name}")
-                
-                elif event_type == "response.text.delta":
+                if event_type == "response.text.delta":
                     text = event.get("delta", {}).get("text", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
@@ -588,7 +526,7 @@ class AiderVoiceGUI:
                 elif event_type == "response.audio.done":
                     self.log_message("AI finished speaking")
                     self.response_active = False
-                    
+                
                 elif event_type == "response.done":
                     self.response_active = False
                     status = event.get("status")
@@ -606,13 +544,12 @@ class AiderVoiceGUI:
                     self.log_message(f"Error from OpenAI: {error_msg}")
                     if "active response" in error_msg.lower():
                         self.response_active = True
-                
+                    
             except websockets.exceptions.ConnectionClosed:
                 self.log_message("WebSocket connection closed")
                 break
             except Exception as e:
                 self.log_message(f"Error handling websocket message: {e}")
-                self.log_message(f"Event content: {json.dumps(event, indent=2)}")
     
     async def process_voice_command(self, text):
         """Process transcribed voice commands using function calling."""
