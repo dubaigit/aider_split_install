@@ -380,7 +380,7 @@ class AiderVoiceGUI:
         self.transcription_text.insert(tk.END, f"{prefix}{text}\n")
         self.transcription_text.see(tk.END)
 
-    async def _send_audio_chunk(self, chunk):
+    async def send_audio_chunk(self, chunk):
         """Send audio chunk to websocket"""
         if self.ws and chunk:
             try:
@@ -771,7 +771,7 @@ class AiderVoiceGUI:
             self.log_message(f"OS error in mic callback: {e}")
             return (None, pyaudio.paContinue)
 
-    async def _process_audio_thread(self):
+    async def process_audio_thread(self):
         """Process audio in a separate thread with enhanced buffering and monitoring"""
         buffer_manager = AudioBufferManager(
             max_size=1024 * 1024,  # 1MB max buffer
@@ -1204,7 +1204,7 @@ class WebSocketManager:
         """Start connection monitoring"""
         self.monitoring_task = asyncio.create_task(self.monitor_connection())
 
-    async def _monitor_connection(self):
+    async def monitor_connection(self):
         """Monitor connection health and handle reconnection"""
         while True:
             try:
@@ -1222,7 +1222,7 @@ class WebSocketManager:
             except asyncio.CancelledError:
                 break
 
-    async def _check_connection(self):
+    async def check_connection(self):
         """Check connection health with ping"""
         try:
             if self.parent.ws:
@@ -1236,7 +1236,7 @@ class WebSocketManager:
             self.parent.log_message(f"⚠️ WebSocket connection lost due to connection error: {e}")
             await self.attempt_reconnect()
 
-    async def _attempt_reconnect(self):
+    async def attempt_reconnect(self):
         """Attempt to reconnect with exponential backoff"""
         if self.reconnect_attempts >= self.max_reconnect_attempts:
             self.parent.log_message("❌ Max reconnection attempts reached")
