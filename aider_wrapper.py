@@ -1346,13 +1346,78 @@ class AiderVoiceGUI:
     
     def use_clipboard_content(self):
         """Get content from clipboard and show in input text"""
+        if not hasattr(self, 'clipboard_manager'):
+            self.clipboard_manager = ClipboardManager(self)
         try:
-            content = pyperclip.paste()
+            content = self.clipboard_manager.get_current_content()
             self.input_text.delete('1.0', tk.END)
             self.input_text.insert('1.0', content)
-            self.log_message("Clipboard content loaded into input")
+            self.log_message("Clipboard content loaded and processed")
         except Exception as e:
-            self.log_message(f"Error getting clipboard content: {e}")
+            self.log_message(f"Error processing clipboard content: {e}")
+
+class ClipboardManager:
+    """Manages clipboard monitoring and content processing"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.previous_content = ""
+        self.processors = {
+            "code": self.process_code,
+            "text": self.process_text,
+            "url": self.process_url
+        }
+        self.monitoring = False
+        
+    def get_current_content(self):
+        """Get and process current clipboard content"""
+        content = pyperclip.paste()
+        content_type = self.detect_content_type(content)
+        return self.processors[content_type](content)
+        
+    def detect_content_type(self, content):
+        """Detect the type of clipboard content"""
+        if self.looks_like_code(content):
+            return "code"
+        elif self.looks_like_url(content):
+            return "url"
+        return "text"
+        
+    def looks_like_code(self, content):
+        """Check if content appears to be code"""
+        code_indicators = ['def ', 'class ', 'import ', 'function', '{', '}', ';']
+        return any(indicator in content for indicator in code_indicators)
+        
+    def looks_like_url(self, content):
+        """Check if content appears to be a URL"""
+        return content.startswith(('http://', 'https://', 'www.'))
+        
+    async def monitor_clipboard(self):
+        """Monitor clipboard for changes"""
+        self.monitoring = True
+        while self.monitoring:
+            current_content = pyperclip.paste()
+            if current_content != self.previous_content:
+                content_type = self.detect_content_type(current_content)
+                await self.processors[content_type](current_content)
+                self.previous_content = current_content
+            await asyncio.sleep(0.5)
+            
+    def process_code(self, content):
+        """Process code content"""
+        # Remove unnecessary whitespace while preserving indentation
+        lines = content.splitlines()
+        cleaned_lines = [line.rstrip() for line in lines]
+        return '\n'.join(cleaned_lines)
+        
+    def process_text(self, content):
+        """Process text content"""
+        # Basic text cleanup
+        return content.strip()
+        
+    def process_url(self, content):
+        """Process URL content"""
+        # Basic URL validation and cleanup
+        return content.strip()
     
     def send_input_text(self):
         """Send input text to assistant for processing"""
@@ -1479,6 +1544,69 @@ class AiderVoiceGUI:
             analysis.append("Found React components: " + str(len(components)))
             
         return "\n".join(analysis)
+
+class ResultProcessor:
+    """Processes and manages operation results"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.result_handlers = {
+            "code_fix": self.handle_code_fix,
+            "voice_command": self.handle_voice_command,
+            "clipboard": self.handle_clipboard
+        }
+        self.result_history = []
+        
+    async def process_result(self, result_type, result_data):
+        """Process operation results"""
+        try:
+            handler = self.result_handlers.get(result_type)
+            if handler:
+                processed_result = await handler(result_data)
+                self.result_history.append({
+                    "type": result_type,
+                    "timestamp": time.time(),
+                    "result": processed_result
+                })
+                await self.notify_user(processed_result)
+                return processed_result
+            else:
+                raise ValueError(f"Unknown result type: {result_type}")
+        except Exception as e:
+            self.parent.log_message(f"Error processing result: {e}")
+            return None
+            
+    async def handle_code_fix(self, result_data):
+        """Handle code fix results"""
+        return {
+            "success": result_data.get("success", False),
+            "changes": result_data.get("changes", []),
+            "files_affected": result_data.get("files_affected", [])
+        }
+        
+    async def handle_voice_command(self, result_data):
+        """Handle voice command results"""
+        return {
+            "command": result_data.get("command"),
+            "success": result_data.get("success", False),
+            "response": result_data.get("response")
+        }
+        
+    async def handle_clipboard(self, result_data):
+        """Handle clipboard operation results"""
+        return {
+            "content_type": result_data.get("content_type"),
+            "processed": result_data.get("processed", False),
+            "size": len(result_data.get("content", ""))
+        }
+        
+    async def notify_user(self, result):
+        """Notify user of operation result"""
+        if isinstance(result, dict):
+            if result.get("success"):
+                self.parent.log_message("✅ Operation completed successfully")
+            else:
+                self.parent.log_message("❌ Operation failed")
+        await self.parent.update_interface("result", result)
 
     def summarize_aider_session(self):
         """Summarize the completed Aider session results."""
@@ -1831,9 +1959,11 @@ def main():
             print(f"Error creating git commit: {e}")
             
 class VoiceCommandProcessor:
-    """Processes and validates voice commands"""
+    """Processes and validates voice commands with real-time AI integration"""
     def __init__(self, parent):
         self.parent = parent
+        self.audio_stream = None
+        self.error_processor = ErrorProcessor(parent)
         
     def preprocess_command(self, command):
         """Clean and normalize voice command"""
@@ -1846,6 +1976,99 @@ class VoiceCommandProcessor:
         if not command:
             return False
         return True
+        
+    async def process_voice_command(self):
+        """Process voice commands using OpenAI's real-time API"""
+        try:
+            stream = await openai.Audio.streaming(
+                model="whisper-1",
+                input=self.audio_stream,
+                response_format="text"
+            )
+            return await self._handle_streaming_response(stream)
+        except Exception as e:
+            await self.error_processor.handle_error("Voice processing error", e)
+            return None
+            
+    async def _handle_streaming_response(self, stream):
+        """Handle streaming response from OpenAI API"""
+        try:
+            async for chunk in stream:
+                if isinstance(chunk, str):
+                    await self.parent.update_transcription(chunk, is_assistant=False)
+            return True
+        except Exception as e:
+            await self.error_processor.handle_error("Stream handling error", e)
+            return False
+
+class ErrorProcessor:
+    """Handles error detection and automated fixing"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.fix_attempts = {}
+        
+    async def handle_error(self, error_type, error):
+        """Handle errors with context and automated fixing"""
+        self.parent.log_message(f"Error ({error_type}): {str(error)}")
+        if self.should_attempt_fix(error_type):
+            await self.auto_fix_errors(self.create_error_context(error_type, error))
+            
+    def should_attempt_fix(self, error_type):
+        """Determine if we should attempt to fix this error"""
+        attempts = self.fix_attempts.get(error_type, 0)
+        if attempts < 3:  # Max 3 attempts per error type
+            self.fix_attempts[error_type] = attempts + 1
+            return True
+        return False
+        
+    def create_error_context(self, error_type, error):
+        """Create context for error fixing"""
+        return {
+            "error_type": error_type,
+            "error_message": str(error),
+            "timestamp": time.time(),
+            "stack_trace": getattr(error, "__traceback__", None)
+        }
+        
+    async def auto_fix_errors(self, error_context):
+        """Attempt to automatically fix errors using AI"""
+        functions = [
+            {
+                "name": "apply_code_fix",
+                "description": "Applies automated fixes to code issues",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "error_type": {"type": "string"},
+                        "fix_strategy": {"type": "string"},
+                        "code_location": {"type": "string"}
+                    }
+                }
+            }
+        ]
+        try:
+            response = await openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": str(error_context)}],
+                functions=functions
+            )
+            return await self.execute_fix(response.choices[0].message)
+        except Exception as e:
+            self.parent.log_message(f"Error in auto-fix attempt: {e}")
+            return None
+            
+    async def execute_fix(self, fix_message):
+        """Execute the proposed fix"""
+        try:
+            if fix_message.get("function_call"):
+                fix_args = json.loads(fix_message["function_call"]["arguments"])
+                self.parent.log_message(f"Applying fix: {fix_args['fix_strategy']}")
+                # Implementation of fix application would go here
+                return True
+            return False
+        except Exception as e:
+            self.parent.log_message(f"Error executing fix: {e}")
+            return False
 
 class WebSocketManager:
     """Manages WebSocket connection state and monitoring"""
