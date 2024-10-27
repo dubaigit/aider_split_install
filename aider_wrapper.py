@@ -1054,9 +1054,12 @@ class AiderVoiceGUI:
                         break
                         
                 except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
-                    if attempt == max_retries - 1:
-                        raise
                     self.log_message(f"Retry {attempt + 1}/{max_retries}: {e}")
+                    if attempt == max_retries - 1:
+                        self.interface_state['command_history'][-1]['status'] = 'failed'
+                        self.interface_state['command_history'][-1]['error'] = str(e)
+                        self.log_message(f"❌ Command failed after {max_retries} retries: {e}")
+                        break
                     await asyncio.sleep(1)
                     
         except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
