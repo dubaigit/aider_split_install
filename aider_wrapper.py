@@ -67,10 +67,104 @@ FORMAT = pyaudio.paInt16
 REENGAGE_DELAY_MS = 500
 OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
 
+class AudioBufferManager:
+    """Manages audio buffering and processing"""
+    def __init__(self, max_size, chunk_size, sample_rate):
+        self.max_size = max_size
+        self.chunk_size = chunk_size
+        self.sample_rate = sample_rate
+        self.buffer = bytearray()
+        self.stats = {'drops': 0, 'overflows': 0}
+        
+    def get_chunks(self, queue):
+        """Get chunks from queue with overflow protection"""
+        chunks = []
+        while len(self.buffer) < self.max_size:
+            try:
+                chunk = queue.get_nowait()
+                if len(self.buffer) + len(chunk) <= self.max_size:
+                    chunks.append(chunk)
+                else:
+                    self.stats['overflows'] += 1
+                    break
+            except queue.Empty:
+                break
+        return chunks
+        
+    def combine_chunks(self, chunks):
+        """Combine chunks with error checking"""
+        try:
+            return b''.join(chunks)
+        except Exception as e:
+            self.stats['drops'] += 1
+            raise AudioProcessingError(f"Error combining chunks: {e}")
+            
+    def get_usage(self):
+        """Get current buffer usage ratio"""
+        return len(self.buffer) / self.max_size
+
+class PerformanceMonitor:
+    """Monitors and reports performance metrics"""
+    def __init__(self, metrics, log_interval=5):
+        self.metrics = {m: [] for m in metrics}
+        self.last_log = time.time()
+        self.log_interval = log_interval
+        
+    def update(self, metric, value):
+        """Update metric value"""
+        if metric in self.metrics:
+            self.metrics[metric].append(value)
+            
+    def get_metrics(self):
+        """Get current metric averages"""
+        return {
+            m: sum(v) / len(v) if v else 0 
+            for m, v in self.metrics.items()
+        }
+        
+    def should_log(self):
+        """Check if it's time to log metrics"""
+        if time.time() - self.last_log >= self.log_interval:
+            self.last_log = time.time()
+            return True
+        return False
+        
+    def reset(self):
+        """Reset all metrics"""
+        self.metrics = {m: [] for m in self.metrics}
+
+class KeyboardShortcuts:
+    """Manages keyboard shortcuts"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.setup_shortcuts()
+        
+    def setup_shortcuts(self):
+        """Setup keyboard shortcuts"""
+        shortcuts = {
+            '<Control-r>': self.parent.check_all_issues,
+            '<Control-a>': self.parent.browse_files,
+            '<Control-v>': self.parent.use_clipboard_content,
+            '<Control-s>': self.parent.send_input_text,
+            '<Escape>': self.parent.stop_voice_control
+        }
+        
+        for key, func in shortcuts.items():
+            self.parent.root.bind(key, lambda e, f=func: f())
+
+class AudioProcessingError(Exception):
+    """Custom exception for audio processing errors"""
+    pass
+
 class AiderVoiceGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Aider Voice Assistant")
+        
+        # Initialize managers
+        self.ws_manager = WebSocketManager(self)
+        self.performance_monitor = PerformanceMonitor(['cpu', 'memory', 'latency'])
+        self.keyboard_shortcuts = KeyboardShortcuts(self)
         self.root.geometry("1200x800")
         
         # Initialize all attributes
@@ -356,32 +450,60 @@ class AiderVoiceGUI:
         return (None, pyaudio.paContinue)
     
     def _process_audio_thread(self):
-        """Process audio in a separate thread"""
+        """Process audio in a separate thread with enhanced buffering and monitoring"""
+        buffer_manager = AudioBufferManager(
+            max_size=1024 * 1024,  # 1MB max buffer
+            chunk_size=self.chunk_buffer_size,
+            sample_rate=SAMPLE_RATE
+        )
+        
+        performance_monitor = PerformanceMonitor(
+            metrics=['latency', 'buffer_usage', 'processing_time']
+        )
+        
         while self.recording:
             try:
-                # Accumulate chunks
-                chunks = []
-                while len(chunks) < self.chunk_buffer_size:
-                    try:
-                        chunk = self.mic_queue.get_nowait()
-                        chunks.append(chunk)
-                    except queue.Empty:
-                        break
+                with performance_monitor.measure('processing_time'):
+                    # Process chunks with buffer management
+                    chunks = buffer_manager.get_chunks(self.mic_queue)
+                    
+                    if chunks:
+                        # Monitor buffer usage
+                        buffer_usage = buffer_manager.get_usage()
+                        performance_monitor.update('buffer_usage', buffer_usage)
+                        
+                        if buffer_usage > 0.8:  # 80% buffer usage warning
+                            self.log_message("⚠️ High audio buffer usage")
+                        
+                        # Process and send audio with latency monitoring
+                        start_time = time.time()
+                        combined_chunk = buffer_manager.combine_chunks(chunks)
+                        
+                        if self.ws and self.ws_manager.connection_state == "connected":
+                            await self._send_audio_chunk(combined_chunk)
+                            
+                        # Monitor latency
+                        latency = (time.time() - start_time) * 1000
+                        performance_monitor.update('latency', latency)
+                        
+                        if latency > 100:  # Warning for high latency
+                            self.log_message(f"⚠️ High audio latency: {latency:.1f}ms")
                 
-                if chunks and self.ws:
-                    # Combine chunks and send
-                    combined_chunk = b''.join(chunks)
-                    asyncio.run_coroutine_threadsafe(
-                        self.ws.send(json.dumps({
-                            'type': 'input_audio_buffer.append',
-                            'audio': base64.b64encode(combined_chunk).decode('utf-8')
-                        })),
-                        self.loop
+                # Log performance metrics periodically
+                if performance_monitor.should_log():
+                    metrics = performance_monitor.get_metrics()
+                    self.log_message(
+                        f"📊 Audio metrics - "
+                        f"Latency: {metrics['latency']:.1f}ms, "
+                        f"Buffer: {metrics['buffer_usage']:.1%}, "
+                        f"Processing: {metrics['processing_time']:.1f}ms"
                     )
+                    
             except Exception as e:
-                self.log_message(f"Error in audio processing thread: {e}")
-            
-            time.sleep(0.01)  # Short sleep to prevent tight loop
+                self.log_message(f"Error in audio processing: {e}")
+                time.sleep(1)  # Delay on error
+                
+            await asyncio.sleep(0.01)  # Cooperative yield
     
     def _spkr_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[bytes, int]:
         """Handle speaker output callback from PyAudio.
@@ -408,10 +530,13 @@ class AiderVoiceGUI:
 
         return (audio_chunk, pyaudio.paContinue)
     
-    async def connect_websocket(self):
-        """Connect to OpenAI's realtime websocket API"""
-        try:
-            self.ws = await websockets.connect(
+    async def connect_websocket(self, max_retries=3, retry_delay=2):
+        """Connect to OpenAI's realtime websocket API with retry logic"""
+        retries = 0
+        while retries < max_retries:
+            try:
+                self.log_message(f"Connecting to OpenAI API (attempt {retries + 1}/{max_retries})...")
+                self.ws = await websockets.connect(
                 OPENAI_WEBSOCKET_URL,
                 extra_headers={
                     "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
@@ -1713,6 +1838,65 @@ def main():
             print("Warning: Not a git repository. Skipping git commit.")
         except Exception as e:
             print(f"Error creating git commit: {e}")
+            
+class WebSocketManager:
+    """Manages WebSocket connection state and monitoring"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.connection_state = "disconnected"
+        self.last_ping_time = 0
+        self.ping_interval = 30  # seconds
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.monitoring_task = None
+        
+    async def start_monitoring(self):
+        """Start connection monitoring"""
+        self.monitoring_task = asyncio.create_task(self._monitor_connection())
+        
+    async def _monitor_connection(self):
+        """Monitor connection health and handle reconnection"""
+        while True:
+            try:
+                if self.connection_state == "connected":
+                    if time.time() - self.last_ping_time > self.ping_interval:
+                        await self._check_connection()
+                elif self.connection_state == "disconnected":
+                    await self._attempt_reconnect()
+                    
+                await asyncio.sleep(1)
+            except Exception as e:
+                self.parent.log_message(f"Connection monitoring error: {e}")
+                
+    async def _check_connection(self):
+        """Check connection health with ping"""
+        try:
+            if self.parent.ws:
+                await self.parent.ws.ping()
+                self.last_ping_time = time.time()
+        except Exception:
+            self.connection_state = "disconnected"
+            self.parent.log_message("⚠️ WebSocket connection lost")
+            await self._attempt_reconnect()
+            
+    async def _attempt_reconnect(self):
+        """Attempt to reconnect with exponential backoff"""
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            self.parent.log_message("❌ Max reconnection attempts reached")
+            return
+            
+        delay = min(30, 2 ** self.reconnect_attempts)
+        self.parent.log_message(f"Attempting reconnection in {delay} seconds...")
+        await asyncio.sleep(delay)
+        
+        try:
+            await self.parent.connect_websocket()
+            self.connection_state = "connected"
+            self.reconnect_attempts = 0
+            self.parent.log_message("✅ Successfully reconnected")
+        except Exception as e:
+            self.reconnect_attempts += 1
+            self.parent.log_message(f"Reconnection attempt failed: {e}")
     else:
         print("Warning: Git functionality is disabled. Skipping git commit.")
 
