@@ -1582,6 +1582,39 @@ def handle_aider_prompts(process):
                 process.stdin.flush()
 
 
+def read_file_content(filename: str) -> str | None:
+    """Read file content with robust error handling.
+    
+    Args:
+        filename: Path to the file to read
+        
+    Returns:
+        str: File contents if successful, None if error occurred
+        
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        PermissionError: If file access is denied
+        IOError: If file read fails
+    """
+    try:
+        with open(filename, 'r', encoding='utf-8') as file:
+            content = file.read()
+            if not content:
+                print(f"Warning: File {filename} is empty")
+            return content
+    except FileNotFoundError as e:
+        print(f"Error: File {filename} not found: {e}")
+        raise
+    except PermissionError as e:
+        print(f"Error: Permission denied accessing {filename}: {e}")
+        raise
+    except IOError as e:
+        print(f"Error reading file {filename}: {e}")
+        raise
+    except Exception as e:
+        print(f"Unexpected error reading {filename}: {e}")
+        return None
+
 def main():
     parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
     parser.add_argument("--voice-only", action="store_true", help="Run in voice control mode only")
