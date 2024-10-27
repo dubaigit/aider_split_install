@@ -66,7 +66,7 @@ class TestAiderVoiceGUI(unittest.TestCase):
         test_text = "Test transcription"
         self.app.update_transcription(test_text, is_assistant=False)
         transcription = self.app.transcription_text.get("1.0", tk.END).strip()
-        self.assertIn(test_text, transcription)
+        self.assertIn("🎤 " + test_text, transcription)
 
     @patch('websockets.connect')
     def test_connect_websocket(self, mock_connect):
@@ -170,18 +170,5 @@ class TestWebSocketManager(unittest.TestCase):
             loop.close()
             asyncio.set_event_loop(None)
 
-def run_tests():
-    """Run the tests with proper setup"""
-    # Store original argv
-    orig_argv = sys.argv
-    
-    try:
-        # Modify argv to remove -v if present
-        sys.argv = [arg for arg in sys.argv if arg != '-v']
-        unittest.main(verbosity=2, exit=False)
-    finally:
-        # Restore original argv
-        sys.argv = orig_argv
-
 if __name__ == '__main__':
-    run_tests()
+    unittest.main(verbosity=2)
