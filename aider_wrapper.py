@@ -5,9 +5,8 @@ import subprocess
 import tempfile
 import select
 import re
-import shutil
 import time
-import queue
+from queue import Queue
 import json
 import base64
 import asyncio
@@ -158,10 +157,49 @@ class AudioProcessingError(Exception):
 
 class AiderVoiceGUI:
     def __init__(self, root):
+        """Initialize the AiderVoiceGUI with all required attributes."""
         self.root = root
         self.root.title("Aider Voice Assistant")
         
+        # Core attributes
+        self.response_active = False
+        self.last_transcript_id = None
+        self.last_audio_time = time.time()
+        self.recording = False
+        self.auto_mode = False
+        self.audio_queue = Queue()
+        self.ws = None
+        self.running = True
+        self.client = OpenAI() if OpenAI else None
+        self.aider_process = None
+        self.temp_files = []
+        self.fixing_issues = False
+        self.mic_active = False
+        self.mic_on_at = 0
+        self._stop_event = threading.Event()
+        
+        # Performance monitoring
+        self.log_frequency = 50
+        self.log_counter = 0
+        self.chunk_buffer = []
+        self.chunk_buffer_size = 5
+        self.audio_thread = None
+        
+        # Interface state tracking
+        self.interface_state = {
+            'files': {},
+            'issues': [],
+            'aider_output': [],
+            'clipboard_history': [],
+            'last_analysis': None,
+            'command_history': []
+        }
+        
         # Parse command line arguments
+        self.args = self._parse_arguments()
+        
+    def _parse_arguments(self):
+        """Parse command line arguments."""
         parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
         parser.add_argument("--voice-only", action="store_true", help="Run in voice control mode only")
         parser.add_argument("-i", "--instructions", help="File containing instructions")
@@ -172,8 +210,7 @@ class AiderVoiceGUI:
         parser.add_argument("--model", help="Model to use for aider")
         parser.add_argument("--gui", action="store_true", help="Launch the GUI interface")
         parser.add_argument("--auto", action="store_true", help="Automatically send ruff issues to aider (GUI mode only)")
-        
-        self.args = parser.parse_args()
+        return parser.parse_args()
         
         # Initialize managers
         self.ws_manager = WebSocketManager(self)
@@ -1440,12 +1477,22 @@ class ClipboardManager:
     def __init__(self, parent):
         self.parent = parent
         self.previous_content = ""
+        self.monitoring = False
+        self.monitoring_task = None
+        self.update_interval = 0.5  # seconds
+        self.max_content_size = 1024 * 1024  # 1MB
+        self.history = []
         self.processors = {
             "code": self.process_code,
             "text": self.process_text,
             "url": self.process_url
         }
-        self.monitoring = False
+        
+        # Error tracking
+        self.error_count = 0
+        self.max_errors = 3
+        self.last_error_time = 0
+        self.error_cooldown = 60  # seconds
         
     def get_current_content(self):
         """Get and process current clipboard content"""
@@ -1628,12 +1675,25 @@ class ResultProcessor:
     """Processes and manages operation results"""
     def __init__(self, parent):
         self.parent = parent
+        self.result_history = []
+        self.processing_queue = Queue()
+        self.max_history_size = 100
+        self.processing = False
+        self.last_process_time = 0
+        self.process_cooldown = 1.0  # seconds
+        
+        # Result handlers with proper typing
         self.result_handlers = {
             "code_fix": self.handle_code_fix,
             "voice_command": self.handle_voice_command,
             "clipboard": self.handle_clipboard
         }
-        self.result_history = []
+        
+        # Error tracking
+        self.error_count = 0
+        self.max_errors = 5
+        self.error_cooldown = 30  # seconds
+        self.last_error_time = 0
         
     async def process_result(self, result_type, result_data):
         """Process operation results"""
