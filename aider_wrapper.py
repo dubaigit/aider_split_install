@@ -1,4 +1,8 @@
-# [Previous imports remain unchanged...]
+import os
+import json
+import time
+import asyncio
+import websockets
 
 # Update the WebSocket URL to match the current API endpoint
 OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/realtime"  # Updated endpoint
@@ -36,7 +40,7 @@ class AiderVoiceGUI:
                         "voice": "alloy"
                     },
                     "vad": {
-                        "enabled": true,
+                        "enabled": True,
                         "threshold": 0.5,
                         "min_silence_duration_ms": 300
                     },
