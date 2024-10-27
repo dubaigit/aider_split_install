@@ -4,39 +4,30 @@ Provides a graphical interface for interacting with Aider using voice commands,
 with support for audio processing, websocket communication, and clipboard management.
 """
 
-import os
+# Standard library imports
 import argparse
-import time
-from queue import Queue, Empty
-import json
-import base64
 import asyncio
+import base64
+import json
+import os
 import threading
-import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog
-import pyaudio
+import time
 from contextlib import contextmanager
+from queue import Empty, Queue
 
-# Optional imports with fallbacks
-try:
-    import sounddevice as sd
-except ImportError:
-    print(
-        "Warning: sounddevice module not found. Voice functionality will be disabled."
-    )
-    sd = None
+# GUI imports
+import tkinter as tk
+from tkinter import filedialog, scrolledtext, ttk
 
+# Third-party imports
+import pyaudio
+
+# Optional third-party imports with fallbacks
 try:
     import numpy as np
 except ImportError:
     print("Warning: numpy module not found. Voice functionality will be disabled.")
     np = None
-
-try:
-    import websockets
-except ImportError:
-    print("Warning: websockets module not found. Voice functionality will be disabled.")
-    websockets = None
 
 try:
     from openai import OpenAI
@@ -51,6 +42,20 @@ except ImportError:
         "Warning: pyperclip module not found. Clipboard functionality will be disabled."
     )
     pyperclip = None
+
+try:
+    import sounddevice as sd
+except ImportError:
+    print(
+        "Warning: sounddevice module not found. Voice functionality will be disabled."
+    )
+    sd = None
+
+try:
+    import websockets
+except ImportError:
+    print("Warning: websockets module not found. Voice functionality will be disabled.")
+    websockets = None
 
 
 # Audio settings
