@@ -888,22 +888,29 @@ class AiderVoiceGUI:
             self.temp_files = []
     
     async def send_audio_response(self, text):
-        """Send text to OpenAI for voice response"""
-        if self.ws:
-            try:
-                await self.ws.send(json.dumps({
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "message",
-                        "role": "assistant",
-                        "content": [{
-                            "type": "text",
-                            "text": text
-                        }]
-                    }
-                }))
-            except Exception as e:
-                self.log_message(f"Error sending audio response: {e}")
+        """Send text to OpenAI for voice response with improved error handling."""
+        if not self.ws:
+            self.log_message("⚠️ Cannot send audio response - WebSocket not connected")
+            return
+            
+        try:
+            await self.ws.send(json.dumps({
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{
+                        "type": "text",
+                        "text": text
+                    }]
+                }
+            }))
+            self.log_message("✅ Voice response sent successfully")
+        except websockets.exceptions.ConnectionClosed:
+            self.log_message("❌ WebSocket connection closed - reconnecting...")
+            await self.connect_websocket()
+        except Exception as e:
+            self.log_message(f"❌ Error sending audio response: {e}")
     
     def log_message(self, message):
         """Log a message to the GUI"""
@@ -933,6 +940,10 @@ class AiderVoiceGUI:
         )
         if files:
             added_files = []
+            total_imports = 0
+            total_classes = 0
+            total_functions = 0
+            
             for file in files:
                 try:
                     content = self.read_file_content(file)
@@ -945,7 +956,17 @@ class AiderVoiceGUI:
                         file_ext = os.path.splitext(file)[1].lower()
                         analysis_result = ""
                         if file_ext == '.py':
-                            analysis_result = self.analyze_python_file(content)
+                            analysis = self.analyze_python_file(content)
+                            if analysis:
+                                analysis_lines = analysis.split('\n')
+                                for line in analysis_lines:
+                                    if 'imports' in line:
+                                        total_imports += int(line.split(':')[1])
+                                    elif 'classes' in line:
+                                        total_classes += int(line.split(':')[1])
+                                    elif 'functions' in line:
+                                        total_functions += int(line.split(':')[1])
+                                analysis_result = analysis
                         elif file_ext in ['.js', '.jsx']:
                             analysis_result = self.analyze_javascript_file(content)
                             
@@ -956,19 +977,32 @@ class AiderVoiceGUI:
                             
                 except Exception as e:
                     self.log_message(f"Error adding file {file}: {e}")
-        
+            
             if added_files:
-                # Create a more conversational response
+                # Create a more detailed and conversational response
                 if len(added_files) == 1:
                     filename = os.path.basename(added_files[0])
-                    response = f"I see you've added {filename}. Would you like me to analyze it for potential issues or help you make any specific changes?"
+                    response = (
+                        f"I see you've added {filename}. "
+                        f"I found {total_imports} imports, {total_classes} classes, and {total_functions} functions. "
+                        "Would you like me to analyze it for potential issues or help you make any specific changes?"
+                    )
                 else:
-                    response = f"I see you've added {len(added_files)} files. Would you like me to check them for any issues or help you with specific modifications?"
+                    response = (
+                        f"I see you've added {len(added_files)} files. "
+                        f"In total, I found {total_imports} imports, {total_classes} classes, and {total_functions} functions. "
+                        "Would you like me to check them for any issues or help you with specific modifications?"
+                    )
                 
-                asyncio.run_coroutine_threadsafe(
-                    self.send_audio_response(response),
-                    self.loop
-                )
+                # Ensure the websocket is connected before sending
+                if self.ws:
+                    asyncio.run_coroutine_threadsafe(
+                        self.send_audio_response(response),
+                        self.loop
+                    )
+                    self.log_message("🗣️ Sending voice response: " + response)
+                else:
+                    self.log_message("⚠️ WebSocket not connected - voice response not sent")
     
     def analyze_python_file(self, content):
         """Analyze Python file content"""
