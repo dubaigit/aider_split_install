@@ -6,7 +6,7 @@ import tempfile
 import select
 import re
 import time
-from queue import Queue
+from queue import Queue, Empty
 import json
 import base64
 import asyncio
@@ -472,7 +472,7 @@ class AiderVoiceGUI:
         # Terminate PyAudio
         self.p.terminate()
     
-    async def _mic_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[None, int]:
+    async def _mic_callback(self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int) -> tuple[None, int]:
         """Handle microphone input callback from PyAudio.
         
         Args:
@@ -556,7 +556,7 @@ class AiderVoiceGUI:
                 
             await asyncio.sleep(0.01)  # Cooperative yield
     
-    async def _spkr_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[bytes, int]:
+    async def _spkr_callback(self, _in_data: bytes, frame_count: int, _time_info: dict, _status: int) -> tuple[bytes, int]:
         """Handle speaker output callback from PyAudio.
         
         Args:
@@ -638,8 +638,8 @@ class AiderVoiceGUI:
     async def process_audio_queue(self):
         """Process audio queue and send to OpenAI"""
         while self.recording:
-            if not self.mic_queue.empty():
-                mic_chunk = self.mic_queue.get()
+            try:
+                mic_chunk = self.mic_queue.get_nowait()
                 self.log_message(f'🎤 Processing {len(mic_chunk)} bytes of audio data.')
                 
                 try:
@@ -1323,6 +1323,53 @@ class AiderVoiceGUI:
             analysis.append("Found React components: " + str(len(components)))
             
         return "\n".join(analysis)
+
+    def send_input_text(self):
+        """Send input text to assistant for processing"""
+        try:
+            content = self.input_text.get('1.0', tk.END).strip()
+            if content:
+                self.log_message("Processing input text...")
+                # Send to assistant for processing
+                asyncio.run_coroutine_threadsafe(
+                    self.process_voice_command(content),
+                    self.loop
+                )
+            else:
+                self.log_message("No input text to process")
+        except tk.TclError as e:
+            self.log_message(f"GUI Error: {e}")
+        except Exception as e:
+            self.log_message(f"Error processing input: {e}")
+    
+    def list_added_files(self):
+        """List all added files in the transcription window"""
+        try:
+            files = self.temp_files
+            if files:
+                self.log_message("Added Files:")
+                for file in files:
+                    self.log_message(f" - {file}")
+            else:
+                self.log_message("No files added.")
+        except Exception as e:
+            self.log_message(f"Error listing files: {e}")
+    
+    def navigate_to_directory(self, directory):
+        """Navigate to a specified directory"""
+        try:
+            if not os.path.exists(directory):
+                raise FileNotFoundError(f"Directory not found: {directory}")
+            if not os.path.isdir(directory):
+                raise NotADirectoryError(f"Not a directory: {directory}")
+            os.chdir(directory)
+            self.log_message(f"Navigated to directory: {directory}")
+        except (FileNotFoundError, NotADirectoryError) as e:
+            self.log_message(f"Directory error: {e}")
+        except PermissionError as e:
+            self.log_message(f"Permission denied: {e}")
+        except Exception as e:
+            self.log_message(f"Error navigating to directory: {e}")
     
     def generate_file_summary(self, files):
         """Generate a detailed summary of added files"""
@@ -1545,36 +1592,6 @@ class ClipboardManager:
         # Basic URL validation and cleanup
         return content.strip()
     
-    def send_input_text(self):
-        """Send input text to assistant for processing"""
-        content = self.input_text.get('1.0', tk.END).strip()
-        if content:
-            self.log_message("Processing input text...")
-            # Send to assistant for processing
-            asyncio.run_coroutine_threadsafe(
-                self.process_voice_command(content),
-                self.loop
-            )
-        else:
-            self.log_message("No input text to process")
-    
-    def list_added_files(self):
-        """List all added files in the transcription window"""
-        files = self.temp_files
-        if files:
-            self.log_message("Added Files:")
-            for file in files:
-                self.log_message(f" - {file}")
-        else:
-            self.log_message("No files added.")
-    
-    def navigate_to_directory(self, directory):
-        """Navigate to a specified directory"""
-        try:
-            os.chdir(directory)
-            self.log_message(f"Navigated to directory: {directory}")
-        except Exception as e:
-            self.log_message(f"Error navigating to directory '{directory}': {e}")
     
     def update_transcription(self, text, is_assistant=False):
         """Update transcription with new text"""
