@@ -755,7 +755,7 @@ class AiderVoiceGUI:
                 # Only log occasionally to reduce GUI updates
                 self.log_counter += 1
                 if self.log_counter % self.log_frequency == 0:
-                    self.log_message(f"🎤 Processing audio...")
+                    self.log_message("🎤 Processing audio...")
             else:
                 if self.mic_active:
                     self.log_message("🎙️🔴 Mic suppressed")
