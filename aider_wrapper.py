@@ -449,7 +449,7 @@ class AiderVoiceGUI:
                 self.mic_active = False
         return (None, pyaudio.paContinue)
     
-    def _process_audio_thread(self):
+    async def _process_audio_thread(self):
         """Process audio in a separate thread with enhanced buffering and monitoring"""
         buffer_manager = AudioBufferManager(
             max_size=1024 * 1024,  # 1MB max buffer
@@ -1921,45 +1921,45 @@ class WebSocketManager:
         else:
             print("Warning: Git functionality is disabled. Skipping git commit.")
 
-        # Get instructions content
-    instructions = ""
-    if args.clipboard:
-        instructions = get_clipboard_content()
-    elif args.instructions:
-        instructions = read_file_content(args.instructions)
+        # Get instructions content from parsed arguments
+        instructions = ""
+        if self.args.clipboard:
+            instructions = get_clipboard_content()
+        elif self.args.instructions:
+            instructions = read_file_content(self.args.instructions)
 
-    # Read file contents
-    file_contents = {filename: read_file_content(filename) for filename in args.filenames}
+        # Read file contents
+        file_contents = {filename: read_file_content(filename) for filename in self.args.filenames}
 
-    # Create message content
-    message_content = create_message_content(instructions, file_contents)
+        # Create message content
+        message_content = create_message_content(instructions, file_contents)
 
-    # Write message content to a temporary file
-    temp_message_file = tempfile.NamedTemporaryFile(mode='w', delete=False, prefix='aider_wrapper_', suffix='.txt')
-    try:
-        temp_message_file.write(message_content)
-        temp_message_file.close()
-        print(f"Temporary message file: {temp_message_file.name}")
-    except IOError as e:
-        print(f"Error writing to temporary file: {e}")
-        sys.exit(1)
+        # Write message content to a temporary file
+        temp_message_file = tempfile.NamedTemporaryFile(mode='w', delete=False, prefix='aider_wrapper_', suffix='.txt')
+        try:
+            temp_message_file.write(message_content)
+            temp_message_file.close()
+            print(f"Temporary message file: {temp_message_file.name}")
+        except IOError as e:
+            print(f"Error writing to temporary file: {e}")
+            sys.exit(1)
 
-    aider_command = [
-        "aider",
-        "--no-pretty",
-        "--dark-mode",
-        "--yes",
-        "--chat-mode", args.chat_mode,
-        "--message-file", temp_message_file.name,
-    ]
+        aider_command = [
+            "aider",
+            "--no-pretty",
+            "--dark-mode",
+            "--yes",
+            "--chat-mode", self.args.chat_mode,
+            "--message-file", temp_message_file.name,
+        ]
 
-    if args.suggest_shell_commands:
-        aider_command.append("--suggest-shell-commands")
+        if self.args.suggest_shell_commands:
+            aider_command.append("--suggest-shell-commands")
 
-    if args.model:
-        aider_command.extend(["--model", args.model])
+        if self.args.model:
+            aider_command.extend(["--model", self.args.model])
 
-    aider_command.extend(args.filenames)
+        aider_command.extend(self.args.filenames)
 
     print("\nExecuting aider command:")
     print(" ".join(aider_command))
