@@ -510,7 +510,7 @@ class AiderVoiceGUI:
         self.fixing_issues = False
         self.mic_active = False
         self.mic_on_at = 0
-        self._stop_event = threading.Event()
+        self.stop_event = threading.Event()
         self.log_frequency = 50
         self.log_counter = 0
         self.chunk_buffer = []
