@@ -204,10 +204,30 @@ class AiderVoiceGUI:
         self.root = root
         self.root.title("Aider Voice Assistant")
         
-        # Initialize all attributes that were previously defined outside __init__
+        # Initialize all attributes
         self.audio_buffer = bytearray()
         self.mic_stream = None
         self.spkr_stream = None
+        self.response_active = False
+        self.last_transcript_id = None
+        self.last_audio_time = time.time()
+        self.recording = False
+        self.auto_mode = False
+        self.audio_queue = Queue()
+        self.ws = None
+        self.running = True
+        self.client = OpenAI() if OpenAI else None
+        self.aider_process = None
+        self.temp_files = []
+        self.fixing_issues = False
+        self.mic_active = False
+        self.mic_on_at = 0
+        self._stop_event = threading.Event()
+        self.log_frequency = 50
+        self.log_counter = 0
+        self.chunk_buffer = []
+        self.chunk_buffer_size = 5
+        self.audio_thread = None
         
         # Core state
         self.interface_state = {
@@ -222,6 +242,24 @@ class AiderVoiceGUI:
         # Initialize managers
         self.clipboard_manager = ClipboardManager(self)
         self.result_processor = ResultProcessor(self)
+        self.error_processor = ErrorProcessor(self)
+        self.ws_manager = WebSocketManager(self)
+        self.performance_monitor = PerformanceMonitor(['cpu', 'memory', 'latency'])
+        self.keyboard_shortcuts = KeyboardShortcuts(self)
+        
+        # Initialize GUI components
+        self.setup_gui()
+        
+        # Initialize asyncio loop
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
+        self.thread.start()
+        
+        # Initialize audio components
+        self.p = pyaudio.PyAudio()
+        
+        # Automatically start voice control
+        self.start_voice_control()
 
     def log_message(self, message):
         """Log a message to the output text area"""
@@ -497,32 +535,6 @@ class AiderVoiceGUI:
         self.temp_files = []
         self.fixing_issues = False
         
-        # Initialize asyncio loop
-        self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
-        self.thread.start()
-        
-        # Initialize audio components
-        self.p = pyaudio.PyAudio()
-        self.audio_buffer = bytearray()
-        self.mic_stream = None
-        self.spkr_stream = None
-        self.mic_queue = Queue()
-        self.mic_on_at = 0
-        self.mic_active = False
-        self._stop_event = threading.Event()
-        
-        # Add performance settings
-        self.log_frequency = 50  # Only log every 50th audio chunk
-        self.log_counter = 0
-        self.chunk_buffer = []  # Buffer for accumulating audio chunks
-        self.chunk_buffer_size = 5  # Number of chunks to accumulate before sending
-        
-        # Initialize audio processing thread
-        self.audio_thread = None
-        
-        # Automatically start voice control
-        self.start_voice_control()
     
     def run_async_loop(self):
         """Run asyncio event loop in a separate thread"""
@@ -874,65 +886,6 @@ class AiderVoiceGUI:
                 await asyncio.sleep(1)
                 continue
     
-    def log_message(self, message):
-        """Log a message to the output text area"""
-        if hasattr(self, 'output_text'):
-            self.output_text.insert(tk.END, f"{message}\n")
-            self.output_text.see(tk.END)
-
-    def browse_files(self):
-        """Open file browser dialog to select files"""
-        files = filedialog.askopenfilenames()
-        for file in files:
-            if file not in self.interface_state['files']:
-                self.interface_state['files'][file] = None
-                self.files_listbox.insert(tk.END, file)
-
-    def check_all_issues(self):
-        """Check all files for issues"""
-        self.issues_text.delete('1.0', tk.END)
-        for file in self.interface_state['files']:
-            # Add your issue checking logic here
-            self.log_message(f"Checking {file} for issues...")
-
-    def remove_selected_file(self):
-        """Remove selected file from listbox"""
-        selection = self.files_listbox.curselection()
-        if selection:
-            file = self.files_listbox.get(selection)
-            self.files_listbox.delete(selection)
-            del self.interface_state['files'][file]
-
-    def use_clipboard_content(self):
-        """Load clipboard content into input text"""
-        if pyperclip:
-            content = pyperclip.paste()
-            self.input_text.delete('1.0', tk.END)
-            self.input_text.insert('1.0', content)
-
-    def send_input_text(self):
-        """Send input text content to processing"""
-        content = self.input_text.get('1.0', tk.END).strip()
-        if content:
-            self.log_message("Processing input...")
-            # Add your processing logic here
-
-    def update_transcription(self, text, is_assistant=False):
-        """Update transcription text area with new text"""
-        prefix = "🤖 " if is_assistant else "🎤 "
-        self.transcription_text.insert(tk.END, f"{prefix}{text}\n")
-        self.transcription_text.see(tk.END)
-
-    async def _send_audio_chunk(self, chunk):
-        """Send audio chunk to websocket"""
-        if self.ws and chunk:
-            try:
-                await self.ws.send(json.dumps({
-                    'type': 'input_audio_buffer.append',
-                    'audio': base64.b64encode(chunk).decode('utf-8')
-                }))
-            except Exception as e:
-                self.log_message(f"Error sending audio chunk: {e}")
 
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
@@ -1121,3 +1074,113 @@ class WebSocketManager:
         except Exception as e:
             self.reconnect_attempts += 1
             self.parent.log_message(f"Reconnection attempt failed: {e}")
+    def setup_gui(self):
+        """Setup GUI components"""
+        self.root.geometry("1200x800")
+        
+        # Create main frame with padding
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create left panel for controls and input
+        self.left_panel = ttk.Frame(self.main_frame)
+        self.left_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        
+        # Control buttons frame
+        self.control_frame = ttk.LabelFrame(self.left_panel, text="Controls", padding="5")
+        self.control_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
+        
+        # Status label
+        self.status_label = ttk.Label(self.control_frame, text="Initializing Voice Control...")
+        self.status_label.grid(row=0, column=1, pady=5, padx=5)
+        
+        # Action buttons
+        self.add_files_button = ttk.Button(
+            self.control_frame,
+            text="📁 Add Files",
+            command=self.browse_files
+        )
+        self.add_files_button.grid(row=1, column=0, pady=5, padx=5, sticky='ew')
+        
+        self.check_issues_button = ttk.Button(
+            self.control_frame,
+            text="🔍 Check Issues",
+            command=self.check_all_issues
+        )
+        self.check_issues_button.grid(row=1, column=1, pady=5, padx=5, sticky='ew')
+        
+        # Listbox to display added files
+        self.files_frame = ttk.LabelFrame(self.left_panel, text="Added Files", padding="5")
+        self.files_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.files_listbox = tk.Listbox(self.files_frame, height=10)
+        self.files_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        self.remove_file_button = ttk.Button(
+            self.files_frame,
+            text="🗑️ Remove Selected",
+            command=self.remove_selected_file
+        )
+        self.remove_file_button.grid(row=1, column=0, pady=5, padx=5, sticky='ew')
+        
+        # Input frame
+        self.input_frame = ttk.LabelFrame(self.left_panel, text="Input/Instructions", padding="5")
+        self.input_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.input_text = scrolledtext.ScrolledText(self.input_frame, height=10)
+        self.input_text.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        self.clipboard_button = ttk.Button(
+            self.input_frame,
+            text="📋 Load Clipboard",
+            command=self.use_clipboard_content
+        )
+        self.clipboard_button.grid(row=1, column=0, pady=5, padx=5)
+        
+        self.send_button = ttk.Button(
+            self.input_frame,
+            text="📤 Send to Aider",
+            command=self.send_input_text
+        )
+        self.send_button.grid(row=1, column=1, pady=5, padx=5)
+        
+        # Create right panel for output
+        self.right_panel = ttk.Frame(self.main_frame)
+        self.right_panel.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        
+        # Transcription frame
+        self.transcription_frame = ttk.LabelFrame(self.right_panel, text="Conversation", padding="5")
+        self.transcription_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.transcription_text = scrolledtext.ScrolledText(self.transcription_frame, height=15)
+        self.transcription_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Issues frame
+        self.issues_frame = ttk.LabelFrame(self.right_panel, text="Issues", padding="5")
+        self.issues_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.issues_text = scrolledtext.ScrolledText(self.issues_frame, height=15)
+        self.issues_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create log frame
+        self.log_frame = ttk.LabelFrame(self.left_panel, text="Log", padding="5")
+        self.log_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        # Create output text area (for logging)
+        self.output_text = scrolledtext.ScrolledText(self.log_frame, height=10)
+        self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Configure grid weights
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        self.main_frame.columnconfigure(1, weight=2)  # Right panel takes more space
+        self.main_frame.rowconfigure(0, weight=1)
+        self.left_panel.columnconfigure(0, weight=1)
+        self.left_panel.rowconfigure(4, weight=1)  # Log frame takes remaining space
+        self.right_panel.columnconfigure(0, weight=1)
+        self.right_panel.rowconfigure(0, weight=1)
+        self.right_panel.rowconfigure(1, weight=1)
+        self.files_frame.columnconfigure(0, weight=1)
+        self.input_frame.columnconfigure(0, weight=1)
+        self.input_frame.columnconfigure(1, weight=1)
+        self.control_frame.columnconfigure(1, weight=1)
