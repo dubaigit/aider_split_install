@@ -64,7 +64,7 @@ SAMPLE_RATE = 24000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 REENGAGE_DELAY_MS = 500
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/speech"
 
 class AiderVoiceGUI:
     def __init__(self, root):
@@ -418,7 +418,7 @@ class AiderVoiceGUI:
                 extra_headers={
                     "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
                     "Content-Type": "application/json",
-                    "OpenAI-Beta": "realtime=v1"
+                    "OpenAI-Beta": "speech-streaming=v1"
                 }
             )
             
@@ -429,17 +429,16 @@ class AiderVoiceGUI:
                     "model": "gpt-4o",
                     "voice": "alloy",
                     "response_format": {
-                        "type": "text_and_audio",
+                        "type": "text_and_speech",
                         "voice": "alloy"
                     },
-                    "turn_detection": {
-                        "type": "server_vad",
+                    "speech_detection": {
+                        "type": "vad",
                         "threshold": 0.5,
-                        "prefix_padding_ms": 200,
-                        "silence_duration_ms": 300
+                        "min_silence_duration_ms": 300
                     },
                     "temperature": 0.8,
-                    "max_response_output_tokens": 2048,
+                    "max_tokens": 2048,
                     "instructions": """
                     You are an AI assistant that helps control the Aider code assistant through voice commands.
                     
