@@ -560,6 +560,16 @@ class AiderVoiceGUI:
                     }
                 }))
                 
+                # Initialize response state
+                self.response_active = False
+                self.last_transcript_id = None
+                self.audio_buffer = bytearray()
+                self.last_audio_time = time.time()
+                
+                # Start message handling
+                asyncio.create_task(self.handle_websocket_messages())
+                asyncio.create_task(self.process_audio_queue())
+                
                 self.log_message("Connected to OpenAI realtime API")
                 return
                 
@@ -570,80 +580,9 @@ class AiderVoiceGUI:
                     await asyncio.sleep(retry_delay)
                 else:
                     raise
-                    },
-                    "temperature": 0.8,
-                    "max_response_output_tokens": 2048,
-                    "functions": [
-                        {
-                            "name": "add_files",
-                            "description": "Add files to the assistant for analysis.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "file_paths": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "List of file paths to add."
-                                    }
-                                },
-                                "required": ["file_paths"]
-                            }
-                        },
-                        {
-                            "name": "check_issues",
-                            "description": "Check the added files for issues.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        },
-                        {
-                            "name": "run_aider_with_clipboard",
-                            "description": "Run Aider with clipboard content.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        },
-                        {
-                            "name": "list_files",
-                            "description": "List all currently added files.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        }
-                    ],
-                    "instructions": """
-                    You are an AI assistant that helps control the Aider code assistant through voice commands.
-                    Use the provided functions to:
-                    - Run Aider with clipboard content (run_aider_with_clipboard)
-                    - Add files to Aider (add_files)
-                    - Check for issues (check_issues)
-                    - List added files (list_files)
-                    
-                    Always confirm what action you're taking and provide clear feedback.
-                    Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
-                    Talk quickly and be engaging with a lively tone.
-                    """
-                }
-            }))
-            
-            self.log_message("Connected to OpenAI realtime API")
-            
-            # Initialize response state
-            self.response_active = False
-            self.last_transcript_id = None
-            self.audio_buffer = bytearray()  # Changed from bytes to bytearray
-            self.last_audio_time = time.time()
-            
-            # Start message handling
-            asyncio.create_task(self.handle_websocket_messages())
-            asyncio.create_task(self.process_audio_queue())
-            
-        except Exception as e:
-            self.log_message(f"Failed to connect to OpenAI: {e}")
-            self.stop_voice_control()
+        
+        self.log_message("Failed to connect after all retries")
+        self.stop_voice_control()
     
     async def process_audio_queue(self):
         """Process audio queue and send to OpenAI"""
