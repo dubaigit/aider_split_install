@@ -155,6 +155,54 @@ class AudioProcessingError(Exception):
     """Custom exception for audio processing errors"""
     pass
 
+class ResultProcessor:
+    """Processes and manages results from various operations"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.results = []
+        
+    def process_result(self, result, source):
+        """Process a result from any operation"""
+        self.results.append({
+            'timestamp': time.time(),
+            'result': result,
+            'source': source
+        })
+        return result
+
+class ErrorProcessor:
+    """Processes and manages errors from various operations"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.errors = []
+        
+    def process_error(self, error, source):
+        """Process an error from any operation"""
+        error_entry = {
+            'timestamp': time.time(),
+            'error': str(error),
+            'source': source
+        }
+        self.errors.append(error_entry)
+        self.parent.log_message(f"Error in {source}: {error}")
+        return error_entry
+
+class VoiceCommandProcessor:
+    """Processes and manages voice commands"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.commands = []
+        
+    def preprocess_command(self, command):
+        """Clean and normalize voice command"""
+        return command.strip().lower()
+        
+    def validate_command(self, command):
+        """Validate voice command format and content"""
+        if not command:
+            return False
+        return True
+
 class AiderVoiceGUI:
     def __init__(self, root):
         """Initialize the AiderVoiceGUI with all required attributes."""
@@ -754,6 +802,17 @@ class AiderVoiceGUI:
                     self.log_message(f"Error from OpenAI: {error_msg}")
                     if "active response" in error_msg.lower():
                         self.response_active = True
+            
+            except websockets.exceptions.ConnectionClosed:
+                self.log_message("WebSocket connection closed")
+                break
+            except json.JSONDecodeError as e:
+                self.log_message(f"Error decoding message: {e}")
+                continue
+            except Exception as e:
+                self.log_message(f"Error handling websocket message: {e}")
+                await asyncio.sleep(1)
+                continue
     
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
