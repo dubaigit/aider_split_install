@@ -4,6 +4,7 @@ import tkinter as tk
 from unittest.mock import MagicMock, patch
 import sys
 from queue import Queue
+import websockets
 from aider_wrapper import (
     AiderVoiceGUI,
     AudioBufferManager,
