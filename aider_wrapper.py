@@ -242,11 +242,8 @@ class VoiceAssistant:
         except Exception as e:
             print(f"Error in voice interaction: {e}")
         finally:
-            if hasattr(self, 'temp_audio') and self.temp_audio:
-                try:
-                    os.unlink(self.temp_audio.name)
-                except Exception as e:
-                    print(f"Error removing temporary audio file: {e}")
+            # Cleanup handled by tempfile module
+            pass
 
 def read_file_content(filename):
     with open(filename, 'r') as file:
@@ -459,19 +456,23 @@ def main():
     parser.add_argument("--voice-only", action="store_true", help="Run in voice control mode only")
     args = parser.parse_args()
 
+    instructions = None
+    
     if args.voice_only:
         assistant = VoiceAssistant()
         asyncio.run(assistant.start_voice_interaction())
+        return
     else:
         print("Warning: Git functionality is disabled. Skipping git commit.")
 
     # Get instructions content
-    if args.voice:
-        pass  # Instructions already set from voice input
-    elif args.clipboard:
+    if args.clipboard:
         instructions = get_clipboard_content()
-    else:
+    elif hasattr(args, 'instructions') and args.instructions:
         instructions = read_file_content(args.instructions)
+    else:
+        print("Error: No instructions provided")
+        sys.exit(1)
 
     # Read file contents
     file_contents = {filename: read_file_content(filename) for filename in args.filenames}
