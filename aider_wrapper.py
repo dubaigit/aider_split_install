@@ -416,23 +416,6 @@ class AiderVoiceGUI:
             except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
                 self.log_message(f"Error sending audio chunk: {e}")
 
-        # Core attributes
-        self.response_active = False
-        self.last_transcript_id = None
-        self.last_audio_time = time.time()
-        self.recording = False
-        self.auto_mode = False
-        self.audio_queue = Queue()
-        self.ws = None
-        self.running = True
-        self.client = OpenAI() if OpenAI else None
-        self.aider_process = None
-        self.temp_files = []
-        self.fixing_issues = False
-        self.mic_active = False
-        self.mic_on_at = 0
-        self.stop_event = threading.Event()
-
         # Performance monitoring
         self.log_frequency = 50
         self.log_counter = 0
