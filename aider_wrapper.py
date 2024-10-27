@@ -497,6 +497,8 @@ class AiderVoiceGUI:
     
     async def handle_websocket_messages(self):
         """Handle incoming websocket messages"""
+        accumulated_text = ""  # Accumulate text before sending voice response
+        
         while self.ws and self.recording:
             try:
                 message = await self.ws.recv()
@@ -511,6 +513,7 @@ class AiderVoiceGUI:
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
                         self.response_active = True
+                        accumulated_text += text
                 
                 elif event_type == "speech.chunk":
                     # Handle audio chunks from the assistant
@@ -528,6 +531,7 @@ class AiderVoiceGUI:
                     # Reset mic suppression after a short delay
                     await asyncio.sleep(REENGAGE_DELAY_MS / 1000)
                     self.mic_on_at = time.time()
+                    accumulated_text = ""  # Reset accumulated text
                 
                 elif event_type == "message.done":
                     self.response_active = False
@@ -540,6 +544,10 @@ class AiderVoiceGUI:
                         self.log_message(f"⚠️ Response failed: {error.get('code', 'unknown error')}")
                     else:
                         self.log_message("Response completed")
+                        # Send accumulated text for voice response if not empty
+                        if accumulated_text.strip():
+                            await self.send_audio_response(accumulated_text)
+                        accumulated_text = ""  # Reset accumulated text
                         # Re-enable mic
                         self.mic_on_at = time.time()
                 
@@ -548,6 +556,7 @@ class AiderVoiceGUI:
                     text = event.get("transcription", {}).get("text", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=False)
+                        await self.process_voice_command(text)
                         await self.process_voice_command(text)
                 
                 elif event_type == "error":
