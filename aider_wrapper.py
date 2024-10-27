@@ -216,6 +216,10 @@ class AiderVoiceGUI:
         self.root = root
         self.root.title("Aider Voice Assistant")
 
+        # Initialize queues
+        self.mic_queue = Queue()
+        self.audio_queue = Queue()
+
         # Initialize all attributes
         self.audio_buffer = bytearray()
         self.mic_stream = None
@@ -328,7 +332,7 @@ class AiderVoiceGUI:
                     'type': 'input_audio_buffer.append',
                     'audio': base64.b64encode(chunk).decode('utf-8')
                 }))
-            except Exception as e:
+            except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
                 self.log_message(f"Error sending audio chunk: {e}")
 
         # Core attributes
@@ -403,12 +407,6 @@ class AiderVoiceGUI:
             help="Automatically send ruff issues to aider (GUI mode only)",
         )
         return parser.parse_args()
-
-        # Initialize managers
-        self.ws_manager = WebSocketManager(self)
-        self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
-        self.keyboard_shortcuts = KeyboardShortcuts(self)
-        self.root.geometry("1200x800")
 
         # Initialize all attributes
         self.response_active = False
@@ -847,13 +845,13 @@ class AiderVoiceGUI:
                             }
                         )
                     )
-                except Exception as e:
+                except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
                     self.log_message(f"Error sending audio data: {e}")
 
                 await asyncio.sleep(0.05)
             except Empty:
                 await asyncio.sleep(0.05)
-            except Exception as e:
+            except (ValueError, RuntimeError) as e:
                 self.log_message(f"Error processing audio queue: {e}")
                 await asyncio.sleep(0.05)
 
