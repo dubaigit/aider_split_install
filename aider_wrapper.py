@@ -726,21 +726,25 @@ class AiderVoiceGUI:
         Returns:
             tuple: (None, paContinue) as required by PyAudio API
         """
-        if time.time() > self.mic_on_at:
-            if not self.mic_active:
-                self.log_message("🎙️🟢 Mic active")
-                self.mic_active = True
-            self.mic_queue.put(in_data)
+        try:
+            if time.time() > self.mic_on_at:
+                if not self.mic_active:
+                    self.log_message("🎙️🟢 Mic active")
+                    self.mic_active = True
+                self.mic_queue.put(in_data)
 
-            # Only log occasionally to reduce GUI updates
-            self.log_counter += 1
-            if self.log_counter % self.log_frequency == 0:
-                self.log_message(f"🎤 Processing audio...")
-        else:
-            if self.mic_active:
-                self.log_message("🎙️🔴 Mic suppressed")
-                self.mic_active = False
-        return (None, pyaudio.paContinue)
+                # Only log occasionally to reduce GUI updates
+                self.log_counter += 1
+                if self.log_counter % self.log_frequency == 0:
+                    self.log_message(f"🎤 Processing audio...")
+            else:
+                if self.mic_active:
+                    self.log_message("🎙️🔴 Mic suppressed")
+                    self.mic_active = False
+            return (None, pyaudio.paContinue)
+        except (ValueError, RuntimeError, OSError) as e:
+            self.log_message(f"Error in mic callback: {e}")
+            return (None, pyaudio.paContinue)
 
     async def _process_audio_thread(self):
         """Process audio in a separate thread with enhanced buffering and monitoring"""
@@ -792,7 +796,7 @@ class AiderVoiceGUI:
                         f"Processing: {metrics['processing_time']:.1f}ms"
                     )
 
-            except Exception as e:
+            except (ValueError, RuntimeError, OSError) as e:
                 self.log_message(f"Error in audio processing: {e}")
                 time.sleep(1)  # Delay on error
 
@@ -878,13 +882,13 @@ class AiderVoiceGUI:
                 self.log_message("Connected to OpenAI realtime API")
                 return
 
-            except Exception as e:
+            except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
                 self.log_message(f"Failed to connect to OpenAI: {e}")
                 retries += 1
                 if retries < max_retries:
                     await asyncio.sleep(retry_delay)
                 else:
-                    raise
+                    raise ConnectionError(f"Failed to connect after {max_retries} attempts: {e}")
 
         self.log_message("Failed to connect after all retries")
         self.stop_voice_control()
@@ -1005,9 +1009,10 @@ class AiderVoiceGUI:
             except json.JSONDecodeError as e:
                 self.log_message(f"Error decoding message: {e}")
                 continue
-            except (websockets.exceptions.WebSocketException, ConnectionError) as e:
+            except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
                 self.log_message(f"WebSocket error: {e}")
                 await asyncio.sleep(1)
+                await self.ws_manager._attempt_reconnect()
                 continue
 
     async def process_voice_command(self, text):
