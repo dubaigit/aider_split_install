@@ -332,42 +332,6 @@ class AiderVoiceGUI:
         self.thread.start()
 
         # Setup GUI components
-        self.setup_gui()
-
-        # Automatically start voice control
-        self.start_voice_control()
-
-        # Core state
-        self.interface_state = {
-            "files": {},
-            "issues": [],
-            "aider_output": [],
-            "clipboard_history": [],
-            "last_analysis": None,
-            "command_history": [],
-        }
-
-        # Initialize managers
-        self.clipboard_manager = ClipboardManager(self)
-        self.result_processor = ResultProcessor(self)
-        self.error_processor = ErrorProcessor(self)
-        self.ws_manager = WebSocketManager(self)
-        self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
-        self.keyboard_shortcuts = KeyboardShortcuts(self)
-
-        # Initialize GUI components
-        self.setup_gui()
-
-        # Initialize asyncio loop
-        self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
-        self.thread.start()
-
-        # Initialize audio components
-        self.p = pyaudio.PyAudio()
-
-        # Automatically start voice control
-        self.start_voice_control()
 
     def log_message(self, message):
         """Log a message to the output text area"""
