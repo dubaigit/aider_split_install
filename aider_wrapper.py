@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 import select
 import re
-import shutil
 import time
 import queue
 import json
@@ -327,14 +326,14 @@ class AiderVoiceGUI:
         # Terminate PyAudio
         self.p.terminate()
     
-    def _mic_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[None, int]:
+    def _mic_callback(self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int) -> tuple[None, int]:
         """Handle microphone input callback from PyAudio.
         
         Args:
             in_data: Raw audio input data
-            frame_count: Number of frames (unused but required by PyAudio API)
-            time_info: Timing information (unused but required by PyAudio API)
-            status: Status flags (unused but required by PyAudio API)
+            _frame_count: Number of frames (unused but required by PyAudio API)
+            _time_info: Timing information (unused but required by PyAudio API)
+            _status: Status flags (unused but required by PyAudio API)
             
         Returns:
             tuple: (None, paContinue) as required by PyAudio API
@@ -378,19 +377,22 @@ class AiderVoiceGUI:
                         })),
                         self.loop
                     )
+            except (websockets.exceptions.ConnectionClosed, json.JSONDecodeError) as e:
+                self.log_message(f"Network or data error in audio processing: {e}")
             except Exception as e:
-                self.log_message(f"Error in audio processing thread: {e}")
+                # Catch-all for unexpected errors that shouldn't crash the thread
+                self.log_message(f"Unexpected error in audio processing thread: {e}")
             
             time.sleep(0.01)  # Short sleep to prevent tight loop
     
-    def _spkr_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[bytes, int]:
+    def _spkr_callback(self, _in_data: bytes, frame_count: int, _time_info: dict, _status: int) -> tuple[bytes, int]:
         """Handle speaker output callback from PyAudio.
         
         Args:
-            in_data: Unused input data (required by PyAudio API)
+            _in_data: Unused input data (required by PyAudio API)
             frame_count: Number of frames to output
-            time_info: Timing information (unused but required by PyAudio API)
-            status: Status flags (unused but required by PyAudio API)
+            _time_info: Timing information (unused but required by PyAudio API)
+            _status: Status flags (unused but required by PyAudio API)
             
         Returns:
             tuple: (audio_data, paContinue) as required by PyAudio API
@@ -1312,57 +1314,6 @@ class AiderVoiceGUI:
             self.log_message(f"Unexpected error reading {filename}: {e}")
             return None
 
-    def analyze_python_file(self, content):
-        """Analyze Python file content"""
-        analysis = []
-        
-        # Check for imports
-        imports = re.findall(r'^import\s+.*$|^from\s+.*\s+import\s+.*$', content, re.MULTILINE)
-        if imports:
-            analysis.append("Found imports: " + str(len(imports)))
-            
-        # Check for classes
-        classes = re.findall(r'^class\s+\w+.*:$', content, re.MULTILINE)
-        if classes:
-            analysis.append("Found classes: " + str(len(classes)))
-            
-        # Check for functions
-        functions = re.findall(r'^def\s+\w+\s*\(.*\):$', content, re.MULTILINE)
-        if functions:
-            analysis.append("Found functions: " + str(len(functions)))
-            
-        # Check for TODO comments
-        todos = re.findall(r'#\s*TODO:', content, re.IGNORECASE)
-        if todos:
-            analysis.append("Found TODOs: " + str(len(todos)))
-            
-        return "\n".join(analysis)
-
-    def analyze_javascript_file(self, content):
-        """Analyze JavaScript file content"""
-        analysis = []
-        
-        # Check for imports/requires
-        imports = re.findall(r'^import\s+.*$|^const.*require\(.*\)$', content, re.MULTILINE)
-        if imports:
-            analysis.append("Found imports/requires: " + str(len(imports)))
-            
-        # Check for classes
-        classes = re.findall(r'^class\s+\w+.*{$', content, re.MULTILINE)
-        if classes:
-            analysis.append("Found classes: " + str(len(classes)))
-            
-        # Check for functions
-        functions = re.findall(r'^(function\s+\w+|\w+\s*=\s*function|\w+\s*:\s*function)', content, re.MULTILINE)
-        if functions:
-            analysis.append("Found functions: " + str(len(functions)))
-            
-        # Check for React components
-        components = re.findall(r'^const\s+\w+\s*=\s*\(\s*\)\s*=>\s*{', content, re.MULTILINE)
-        if components:
-            analysis.append("Found React components: " + str(len(components)))
-            
-        return "\n".join(analysis)
 
     def summarize_aider_session(self):
         """Summarize the completed Aider session results."""
@@ -1575,38 +1526,6 @@ def enhance_user_experience():
     for i in tqdm(range(10), desc="Preparing environment"):
         time.sleep(0.1)
 
-def read_file_content(filename: str) -> str:
-    """Read file content with robust error handling.
-    
-    Args:
-        filename: Path to the file to read
-        
-    Returns:
-        str: File contents
-        
-    Raises:
-        FileNotFoundError: If file doesn't exist
-        PermissionError: If file access is denied
-        IOError: If file read fails
-    """
-    try:
-        with open(filename, 'r', encoding='utf-8') as file:
-            content = file.read()
-            if not content:
-                print(f"Warning: File {filename} is empty")
-            return content
-    except FileNotFoundError as e:
-        print(f"Error: File {filename} not found: {e}")
-        sys.exit(1)
-    except PermissionError as e:
-        print(f"Error: Permission denied accessing {filename}: {e}")
-        sys.exit(1)
-    except IOError as e:
-        print(f"Error reading file {filename}: {e}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Unexpected error reading {filename}: {e}")
-        sys.exit(1)
 
 def get_clipboard_content():
     """
