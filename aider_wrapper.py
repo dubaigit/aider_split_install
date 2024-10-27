@@ -64,7 +64,7 @@ SAMPLE_RATE = 24000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 REENGAGE_DELAY_MS = 500
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/realtime-conversation"
 
 class AiderVoiceGUI:
     def __init__(self, root):
@@ -418,7 +418,7 @@ class AiderVoiceGUI:
                 extra_headers={
                     "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
                     "Content-Type": "application/json",
-                    "OpenAI-Beta": "realtime=v1"
+                    "OpenAI-Beta": "realtime-conversation=v1"
                 }
             )
         
