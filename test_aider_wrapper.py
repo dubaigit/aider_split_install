@@ -3,7 +3,13 @@ import asyncio
 import tkinter as tk
 from unittest.mock import MagicMock, patch
 import sys
-from aider_wrapper import AiderVoiceGUI, AudioBufferManager, PerformanceMonitor, WebSocketManager
+from aider_wrapper import (
+    AiderVoiceGUI,
+    AudioBufferManager,
+    PerformanceMonitor,
+    WebSocketManager,
+    VoiceCommandProcessor,
+)
 
 class AsyncMock(MagicMock):
     """Mock class that supports async methods and special method handling"""
