@@ -738,18 +738,56 @@ class AiderVoiceGUI:
                 self.log_message(f"Event content: {json.dumps(event, indent=2)}")
     
     async def process_voice_command(self, text):
-        """Process transcribed voice commands using function calling."""
-        self.log_message(f"Processing command: {text}")
-
-        # Send the user's input to the assistant
-        await self.ws.send(json.dumps({
-            "type": "conversation.item.create",
-            "item": {
-                "type": "message",
-                "role": "user",
-                "content": [{"type": "text", "text": text}]
-            }
-        }))
+        """Process transcribed voice commands with enhanced handling"""
+        command_processor = VoiceCommandProcessor(self)
+        
+        try:
+            # Update command history
+            self.interface_state.setdefault('command_history', []).append({
+                'timestamp': time.time(),
+                'command': text,
+                'status': 'processing'
+            })
+            
+            # Pre-process command
+            processed_command = command_processor.preprocess_command(text)
+            self.log_message(f"Processing command: {processed_command}")
+            
+            # Validate command
+            if not command_processor.validate_command(processed_command):
+                raise ValueError("Invalid command format")
+                
+            # Execute command with retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if self.ws and self.ws_manager.connection_state == "connected":
+                        await self.ws.send(json.dumps({
+                            "type": "conversation.item.create",
+                            "item": {
+                                "type": "message",
+                                "role": "user",
+                                "content": [{
+                                    "type": "text",
+                                    "text": processed_command
+                                }]
+                            }
+                        }))
+                        
+                        # Update command status
+                        self.interface_state['command_history'][-1]['status'] = 'completed'
+                        break
+                        
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    self.log_message(f"Retry {attempt + 1}/{max_retries}: {e}")
+                    await asyncio.sleep(1)
+                    
+        except Exception as e:
+            self.log_message(f"❌ Command processing error: {e}")
+            self.interface_state['command_history'][-1]['status'] = 'failed'
+            self.interface_state['command_history'][-1]['error'] = str(e)
     
     def run_aider_with_clipboard(self):
         """Run Aider using clipboard content"""
