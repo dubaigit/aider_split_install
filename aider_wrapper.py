@@ -276,30 +276,66 @@ class AiderVoiceGUI:
         self.log_frame = None
         self.output_text = None
 
-        # Initialize all attributes
+        # Initialize audio components
         self.audio_buffer = bytearray()
         self.mic_stream = None
         self.spkr_stream = None
+        self.chunk_buffer = []
+        self.chunk_buffer_size = 5
+        self.audio_thread = None
+        self.p = pyaudio.PyAudio()
+
+        # Initialize state tracking
         self.response_active = False
         self.last_transcript_id = None
         self.last_audio_time = time.time()
         self.recording = False
         self.auto_mode = False
-        self.audio_queue = Queue()
-        self.ws = None
         self.running = True
-        self.client = OpenAI() if OpenAI else None
-        self.aider_process = None
-        self.temp_files = []
         self.fixing_issues = False
         self.mic_active = False
         self.mic_on_at = 0
         self.stop_event = threading.Event()
         self.log_frequency = 50
         self.log_counter = 0
-        self.chunk_buffer = []
-        self.chunk_buffer_size = 5
-        self.audio_thread = None
+
+        # Initialize API clients and connections
+        self.client = OpenAI() if OpenAI else None
+        self.ws = None
+        self.aider_process = None
+        self.temp_files = []
+
+        # Initialize interface state
+        self.interface_state = {
+            "files": {},  # Store file contents
+            "issues": [],  # Store detected issues
+            "aider_output": [],  # Store Aider responses
+            "clipboard_history": [],  # Track clipboard content
+            "last_analysis": None,  # Store last analysis results
+            "command_history": [],  # Track command history
+        }
+
+        # Initialize managers
+        self.clipboard_manager = ClipboardManager(self)
+        self.result_processor = ResultProcessor(self)
+        self.error_processor = ErrorProcessor(self)
+        self.ws_manager = WebSocketManager(self)
+        self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
+        self.keyboard_shortcuts = KeyboardShortcuts(self)
+
+        # Parse command line arguments
+        self.args = self._parse_arguments()
+
+        # Initialize asyncio loop
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
+        self.thread.start()
+
+        # Setup GUI components
+        self.setup_gui()
+
+        # Automatically start voice control
+        self.start_voice_control()
 
         # Core state
         self.interface_state = {
@@ -1257,3 +1293,38 @@ class WebSocketManager:
         except asyncio.CancelledError:
             raise
 
+    def _parse_arguments(self):
+        """Parse command line arguments"""
+        parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
+        parser.add_argument(
+            "--voice-only", action="store_true", help="Run in voice control mode only"
+        )
+        parser.add_argument("-i", "--instructions", help="File containing instructions")
+        parser.add_argument(
+            "-c",
+            "--clipboard",
+            action="store_true",
+            help="Use clipboard content as instructions",
+        )
+        parser.add_argument("filenames", nargs="*", help="Filenames to process")
+        parser.add_argument(
+            "--chat-mode",
+            default="code",
+            choices=["code", "ask"],
+            help="Chat mode to use for aider",
+        )
+        parser.add_argument(
+            "--suggest-shell-commands",
+            action="store_true",
+            help="Suggest shell commands while running aider",
+        )
+        parser.add_argument("--model", help="Model to use for aider")
+        parser.add_argument(
+            "--gui", action="store_true", help="Launch the GUI interface"
+        )
+        parser.add_argument(
+            "--auto",
+            action="store_true",
+            help="Automatically send ruff issues to aider (GUI mode only)",
+        )
+        return parser.parse_args()
