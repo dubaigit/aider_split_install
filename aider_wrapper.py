@@ -73,6 +73,15 @@ class AiderVoiceGUI:
         self.root.title("Aider Voice Assistant")
         self.root.geometry("1200x800")
         
+        # Track interface state and content
+        self.interface_state = {
+            'files': {},  # Store file contents
+            'issues': [],  # Store detected issues
+            'aider_output': [],  # Store Aider responses
+            'clipboard_history': [],  # Track clipboard content
+            'last_analysis': None,  # Store last analysis results
+        }
+        
         # Create main frame with padding
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -493,8 +502,20 @@ class AiderVoiceGUI:
         """Process transcribed voice commands"""
         self.log_message(f"Processing command: {text}")
         
+        # Analyze current interface state
+        analysis = self.analyze_current_state()
+        self.interface_state['last_analysis'] = analysis
+        
         # Normalize text for easier command recognition
         command = text.lower()
+        
+        # Enhanced command understanding with context
+        context = {
+            'files': list(self.interface_state['files'].keys()),
+            'has_issues': bool(self.interface_state['issues']),
+            'aider_running': bool(self.aider_process and self.aider_process.poll() is None),
+            'clipboard_available': bool(self.interface_state['clipboard_history']),
+        }
         
         if "run aider" in command and "clipboard" in command:
             self.log_message("Running Aider with clipboard content...")
@@ -532,6 +553,31 @@ class AiderVoiceGUI:
         if self.aider_process and self.aider_process.poll() is None:
             self.log_message("Aider is already running. Please wait for it to finish.")
             return
+            
+        try:
+            clipboard_content = pyperclip.paste()
+            if not clipboard_content.strip():
+                self.log_message("Clipboard is empty. Please copy some content first.")
+                return
+                
+            # Analyze clipboard content
+            analysis = self.analyze_clipboard_content(clipboard_content)
+            self.interface_state['clipboard_history'].append({
+                'content': clipboard_content,
+                'analysis': analysis,
+                'timestamp': time.time()
+            })
+            
+            # Log analysis insights
+            self.log_message("Clipboard Content Analysis:")
+            self.log_message(f"- Type: {analysis['type']}")
+            self.log_message(f"- Length: {analysis['length']} characters")
+            self.log_message(f"- Purpose: {analysis['purpose']}")
+            
+            if analysis['recommendations']:
+                self.log_message("Recommendations:")
+                for rec in analysis['recommendations']:
+                    self.log_message(f"- {rec}")
 
         try:
             clipboard_content = pyperclip.paste()
@@ -592,6 +638,97 @@ class AiderVoiceGUI:
         except Exception as e:
             self.log_message(f"Error running Aider with files: {e}")
     
+    def analyze_current_state(self):
+        """Analyze the current state of the interface and files"""
+        analysis = {
+            'files': {},
+            'issues': [],
+            'interface_state': {},
+            'recommendations': []
+        }
+        
+        # Analyze loaded files
+        for filename, content in self.interface_state['files'].items():
+            analysis['files'][filename] = {
+                'size': len(content),
+                'type': self.detect_file_type(filename),
+                'issues': self.analyze_file_issues(filename, content)
+            }
+        
+        # Analyze interface state
+        analysis['interface_state'] = {
+            'has_unsaved_changes': bool(self.aider_process),
+            'active_tasks': bool(self.fixing_issues),
+            'available_actions': self.get_available_actions()
+        }
+        
+        # Generate recommendations
+        analysis['recommendations'] = self.generate_recommendations(analysis)
+        
+        return analysis
+    
+    def detect_file_type(self, filename):
+        """Detect file type and relevant analysis approach"""
+        ext = filename.split('.')[-1].lower()
+        return {
+            'py': 'python',
+            'js': 'javascript',
+            'html': 'html',
+            'css': 'css',
+            'json': 'json'
+        }.get(ext, 'unknown')
+    
+    def analyze_file_issues(self, filename, content):
+        """Analyze a file for potential issues"""
+        issues = []
+        
+        # Basic analysis
+        if not content.strip():
+            issues.append(f"{filename} is empty")
+        
+        # Language-specific analysis
+        file_type = self.detect_file_type(filename)
+        if file_type == 'python':
+            issues.extend(self.analyze_python_file(content))
+        elif file_type == 'javascript':
+            issues.extend(self.analyze_javascript_file(content))
+            
+        return issues
+    
+    def get_available_actions(self):
+        """Determine available actions based on current state"""
+        actions = []
+        
+        if self.interface_state['files']:
+            actions.append('analyze_files')
+            actions.append('check_issues')
+            
+        if self.interface_state['issues']:
+            actions.append('fix_issues')
+            
+        if self.interface_state['clipboard_history']:
+            actions.append('use_clipboard')
+            
+        return actions
+    
+    def generate_recommendations(self, analysis):
+        """Generate recommendations based on analysis"""
+        recommendations = []
+        
+        # File-based recommendations
+        for filename, file_analysis in analysis['files'].items():
+            if file_analysis['issues']:
+                recommendations.append(f"Fix issues in {filename}")
+                
+        # State-based recommendations
+        if analysis['interface_state']['has_unsaved_changes']:
+            recommendations.append("Save current changes")
+            
+        if not analysis['files']:
+            recommendations.append("Add files to analyze")
+            
+        return recommendations
+
     def check_aider_process(self):
         """Check Aider process status and output"""
         if not self.aider_process:
@@ -769,10 +906,43 @@ class AiderVoiceGUI:
                 self.temp_files.remove(file)
             self.log_message(f"Removed file: {file}")
     
+    def analyze_clipboard_content(self, content):
+        """Analyze clipboard content for context and purpose"""
+        analysis = {
+            'type': 'unknown',
+            'length': len(content),
+            'purpose': 'unknown',
+            'recommendations': []
+        }
+        
+        # Detect content type
+        if content.strip().startswith(('def ', 'class ')):
+            analysis['type'] = 'python_code'
+            analysis['purpose'] = 'code_addition_or_modification'
+        elif '<' in content and '>' in content:
+            analysis['type'] = 'markup'
+            analysis['purpose'] = 'template_or_structure'
+        elif 'error' in content.lower() or 'exception' in content.lower():
+            analysis['type'] = 'error_message'
+            analysis['purpose'] = 'error_resolution'
+        elif len(content.splitlines()) == 1:
+            analysis['type'] = 'single_line'
+            analysis['purpose'] = 'quick_edit'
+        
+        # Generate recommendations
+        if analysis['type'] == 'error_message':
+            analysis['recommendations'].append("Send to Aider for error analysis")
+        elif analysis['type'] == 'python_code':
+            analysis['recommendations'].append("Run code quality checks before sending to Aider")
+        
+        return analysis
+
     def check_all_issues(self):
         """Run both ruff and mypy checks"""
         self.issues_text.delete('1.0', tk.END)
         self.issues_text.insert(tk.END, "Running checks...\n\n")
+        
+        all_issues = []
         
         # Run ruff
         try:
