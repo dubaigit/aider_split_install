@@ -161,6 +161,20 @@ class AiderVoiceGUI:
         self.root = root
         self.root.title("Aider Voice Assistant")
         
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
+        parser.add_argument("--voice-only", action="store_true", help="Run in voice control mode only")
+        parser.add_argument("-i", "--instructions", help="File containing instructions")
+        parser.add_argument("-c", "--clipboard", action="store_true", help="Use clipboard content as instructions")
+        parser.add_argument("filenames", nargs='*', help="Filenames to process")
+        parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
+        parser.add_argument("--suggest-shell-commands", action="store_true", help="Suggest shell commands while running aider")
+        parser.add_argument("--model", help="Model to use for aider")
+        parser.add_argument("--gui", action="store_true", help="Launch the GUI interface")
+        parser.add_argument("--auto", action="store_true", help="Automatically send ruff issues to aider (GUI mode only)")
+        
+        self.args = parser.parse_args()
+        
         # Initialize managers
         self.ws_manager = WebSocketManager(self)
         self.performance_monitor = PerformanceMonitor(['cpu', 'memory', 'latency'])
@@ -742,6 +756,71 @@ class AiderVoiceGUI:
             self.interface_state['command_history'][-1]['status'] = 'failed'
             self.interface_state['command_history'][-1]['error'] = str(e)
     
+    def __del__(self) -> None:
+        """Cleanup resources when object is deleted."""
+        try:
+            # Stop and close audio streams
+            if hasattr(self, 'mic_stream'):
+                try:
+                    self.mic_stream.stop_stream()
+                    self.mic_stream.close()
+                except Exception as e:
+                    print(f"Error closing mic stream: {e}")
+                    
+            if hasattr(self, 'spkr_stream'):
+                try:
+                    self.spkr_stream.stop_stream()
+                    self.spkr_stream.close()
+                except Exception as e:
+                    print(f"Error closing speaker stream: {e}")
+            
+            # Terminate PyAudio
+            if hasattr(self, 'p'):
+                try:
+                    self.p.terminate()
+                except Exception as e:
+                    print(f"Error terminating PyAudio: {e}")
+            
+            # Close websocket
+            if hasattr(self, 'ws') and self.ws:
+                try:
+                    asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
+                except Exception as e:
+                    print(f"Error closing websocket: {e}")
+                    
+            # Clean up temp files
+            for temp_file in getattr(self, 'temp_files', []):
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except Exception as e:
+                    print(f"Error removing temp file {temp_file}: {e}")
+                    
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+
+    def add_files(self, file_paths):
+        """Add files to the assistant for analysis."""
+        added_files = []
+        for file in file_paths:
+            content = self.read_file_content(file)
+            if content is not None:
+                self.interface_state['files'][file] = content
+                self.files_listbox.insert(tk.END, file)
+                self.log_message(f"Added file: {file}")
+                added_files.append(file)
+        return {"status": "success", "added_files": added_files}
+
+    async def check_issues(self):
+        """Check the added files for issues."""
+        await self.check_all_issues()
+        return {"status": "success"}
+
+    def list_files(self):
+        """List all currently added files."""
+        files = list(self.interface_state['files'].keys())
+        return {"status": "success", "files": files}
+
     def run_aider_with_clipboard(self):
         """Run Aider using clipboard content"""
         if self.aider_process and self.aider_process.poll() is None:
@@ -2239,84 +2318,3 @@ class WebSocketManager:
 
 if __name__ == "__main__":
     main()
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Aider Voice Assistant")
-        
-        # Parse command line arguments
-        parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
-        parser.add_argument("--voice-only", action="store_true", help="Run in voice control mode only")
-        parser.add_argument("-i", "--instructions", help="File containing instructions")
-        parser.add_argument("-c", "--clipboard", action="store_true", help="Use clipboard content as instructions")
-        parser.add_argument("filenames", nargs='*', help="Filenames to process")
-        parser.add_argument("--chat-mode", default="code", choices=["code", "ask"], help="Chat mode to use for aider")
-        parser.add_argument("--suggest-shell-commands", action="store_true", help="Suggest shell commands while running aider")
-        parser.add_argument("--model", help="Model to use for aider")
-        parser.add_argument("--gui", action="store_true", help="Launch the GUI interface")
-        parser.add_argument("--auto", action="store_true", help="Automatically send ruff issues to aider (GUI mode only)")
-        
-        self.args = parser.parse_args()
-        
-    def __del__(self) -> None:
-        """Cleanup resources when object is deleted."""
-        try:
-            # Stop and close audio streams
-            if hasattr(self, 'mic_stream'):
-                try:
-                    self.mic_stream.stop_stream()
-                    self.mic_stream.close()
-                except Exception as e:
-                    print(f"Error closing mic stream: {e}")
-                    
-            if hasattr(self, 'spkr_stream'):
-                try:
-                    self.spkr_stream.stop_stream()
-                    self.spkr_stream.close()
-                except Exception as e:
-                    print(f"Error closing speaker stream: {e}")
-            
-            # Terminate PyAudio
-            if hasattr(self, 'p'):
-                try:
-                    self.p.terminate()
-                except Exception as e:
-                    print(f"Error terminating PyAudio: {e}")
-            
-            # Close websocket
-            if hasattr(self, 'ws') and self.ws:
-                try:
-                    asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
-                except Exception as e:
-                    print(f"Error closing websocket: {e}")
-                    
-            # Clean up temp files
-            for temp_file in getattr(self, 'temp_files', []):
-                try:
-                    if os.path.exists(temp_file):
-                        os.unlink(temp_file)
-                except Exception as e:
-                    print(f"Error removing temp file {temp_file}: {e}")
-                    
-        except Exception as e:
-            print(f"Error during cleanup: {e}")
-    def add_files(self, file_paths):
-        """Add files to the assistant for analysis."""
-        added_files = []
-        for file in file_paths:
-            content = self.read_file_content(file)
-            if content is not None:
-                self.interface_state['files'][file] = content
-                self.files_listbox.insert(tk.END, file)
-                self.log_message(f"Added file: {file}")
-                added_files.append(file)
-        return {"status": "success", "added_files": added_files}
-
-    async def check_issues(self):
-        """Check the added files for issues."""
-        await self.check_all_issues()
-        return {"status": "success"}
-
-    def list_files(self):
-        """List all currently added files."""
-        files = list(self.interface_state['files'].keys())
-        return {"status": "success", "files": files}
