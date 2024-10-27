@@ -3,8 +3,11 @@ import asyncio
 import tkinter as tk
 from unittest.mock import MagicMock, patch
 import sys
+import json
+import time
 from queue import Queue
 import websockets
+import pyaudio
 from aider_wrapper import (
     AiderVoiceGUI,
     AudioBufferManager,
