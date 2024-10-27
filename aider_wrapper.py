@@ -305,8 +305,18 @@ class AiderVoiceGUI:
         # Terminate PyAudio
         self.p.terminate()
     
-    def _mic_callback(self, in_data, frame_count, time_info, status):
-        """Microphone callback that queues audio chunks."""
+    def _mic_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[None, int]:
+        """Handle microphone input callback from PyAudio.
+        
+        Args:
+            in_data: Raw audio input data
+            frame_count: Number of frames (unused but required by PyAudio API)
+            time_info: Timing information (unused but required by PyAudio API)
+            status: Status flags (unused but required by PyAudio API)
+            
+        Returns:
+            tuple: (None, paContinue) as required by PyAudio API
+        """
         if time.time() > self.mic_on_at:
             if not self.mic_active:
                 self.log_message('🎙️🟢 Mic active')
@@ -351,8 +361,18 @@ class AiderVoiceGUI:
             
             time.sleep(0.01)  # Short sleep to prevent tight loop
     
-    def _spkr_callback(self, in_data, frame_count, time_info, status):
-        """Speaker callback that plays audio."""
+    def _spkr_callback(self, in_data: bytes, frame_count: int, time_info: dict, status: int) -> tuple[bytes, int]:
+        """Handle speaker output callback from PyAudio.
+        
+        Args:
+            in_data: Unused input data (required by PyAudio API)
+            frame_count: Number of frames to output
+            time_info: Timing information (unused but required by PyAudio API)
+            status: Status flags (unused but required by PyAudio API)
+            
+        Returns:
+            tuple: (audio_data, paContinue) as required by PyAudio API
+        """
         bytes_needed = frame_count * 2
         current_buffer_size = len(self.audio_buffer)
 
@@ -787,7 +807,8 @@ class AiderVoiceGUI:
             ruff_result = subprocess.run(
                 ["ruff", "check", "."],
                 capture_output=True,
-                text=True
+                text=True,
+                check=False  # Don't raise on ruff findings
             )
             if ruff_result.stdout:
                 issues_found = True
@@ -800,7 +821,8 @@ class AiderVoiceGUI:
             mypy_result = subprocess.run(
                 ["mypy", "."],
                 capture_output=True,
-                text=True
+                text=True,
+                check=False  # Don't raise on type check findings
             )
             if mypy_result.stdout:
                 issues_found = True
@@ -1150,21 +1172,38 @@ class AiderVoiceGUI:
         # Also update the log
         self.log_message(f"{prefix}{text}")
 
-    def read_file_content(self, filename):
-        """Read file content with robust error handling"""
+    def read_file_content(self, filename: str) -> str | None:
+        """Read file content with robust error handling.
+        
+        Args:
+            filename: Path to the file to read
+            
+        Returns:
+            str: File contents if successful, None if error occurred
+            
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            PermissionError: If file access is denied
+            IOError: If file read fails
+        """
         try:
             with open(filename, 'r', encoding='utf-8') as file:
                 content = file.read()
                 if not content:
                     self.log_message(f"Warning: File {filename} is empty")
                 return content
-        except FileNotFoundError:
-            self.log_message(f"Error: File {filename} not found")
-        except PermissionError:
-            self.log_message(f"Error: Permission denied accessing {filename}")
-        except Exception as e:
+        except FileNotFoundError as e:
+            self.log_message(f"Error: File {filename} not found: {e}")
+            raise
+        except PermissionError as e:
+            self.log_message(f"Error: Permission denied accessing {filename}: {e}")
+            raise
+        except IOError as e:
             self.log_message(f"Error reading file {filename}: {e}")
-        return None
+            raise
+        except Exception as e:
+            self.log_message(f"Unexpected error reading {filename}: {e}")
+            return None
 
     def analyze_python_file(self, content):
         """Analyze Python file content"""
@@ -1263,23 +1302,6 @@ class AiderVoiceGUI:
                 self.log_message(f"  • {error}")
         
         self.log_message("\nPlease check the logs above for more details")
-def read_file_content(filename):
-    """Read file content with robust error handling"""
-    try:
-        with open(filename, 'r', encoding='utf-8') as file:
-            content = file.read()
-            if not content:
-                print(f"Warning: File {filename} is empty")
-            return content
-    except FileNotFoundError:
-        print(f"Error: File {filename} not found")
-        sys.exit(1)
-    except PermissionError:
-        print(f"Error: Permission denied accessing {filename}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error reading file {filename}: {e}")
-        sys.exit(1)
 
 def create_message_content(instructions, file_contents):
     existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
@@ -1648,3 +1670,45 @@ def main():
 
 if __name__ == "__main__":
     main()
+    def __del__(self) -> None:
+        """Cleanup resources when object is deleted."""
+        try:
+            # Stop and close audio streams
+            if hasattr(self, 'mic_stream'):
+                try:
+                    self.mic_stream.stop_stream()
+                    self.mic_stream.close()
+                except Exception as e:
+                    print(f"Error closing mic stream: {e}")
+                    
+            if hasattr(self, 'spkr_stream'):
+                try:
+                    self.spkr_stream.stop_stream()
+                    self.spkr_stream.close()
+                except Exception as e:
+                    print(f"Error closing speaker stream: {e}")
+            
+            # Terminate PyAudio
+            if hasattr(self, 'p'):
+                try:
+                    self.p.terminate()
+                except Exception as e:
+                    print(f"Error terminating PyAudio: {e}")
+            
+            # Close websocket
+            if hasattr(self, 'ws') and self.ws:
+                try:
+                    asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
+                except Exception as e:
+                    print(f"Error closing websocket: {e}")
+                    
+            # Clean up temp files
+            for temp_file in getattr(self, 'temp_files', []):
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except Exception as e:
+                    print(f"Error removing temp file {temp_file}: {e}")
+                    
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
