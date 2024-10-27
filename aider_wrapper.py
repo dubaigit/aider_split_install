@@ -1468,6 +1468,39 @@ def enhance_user_experience():
     for i in tqdm(range(10), desc="Preparing environment"):
         time.sleep(0.1)
 
+def read_file_content(filename: str) -> str:
+    """Read file content with robust error handling.
+    
+    Args:
+        filename: Path to the file to read
+        
+    Returns:
+        str: File contents
+        
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        PermissionError: If file access is denied
+        IOError: If file read fails
+    """
+    try:
+        with open(filename, 'r', encoding='utf-8') as file:
+            content = file.read()
+            if not content:
+                print(f"Warning: File {filename} is empty")
+            return content
+    except FileNotFoundError as e:
+        print(f"Error: File {filename} not found: {e}")
+        sys.exit(1)
+    except PermissionError as e:
+        print(f"Error: Permission denied accessing {filename}: {e}")
+        sys.exit(1)
+    except IOError as e:
+        print(f"Error reading file {filename}: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error reading {filename}: {e}")
+        sys.exit(1)
+
 def get_clipboard_content():
     """
     Get content from clipboard with enhanced error handling and validation
