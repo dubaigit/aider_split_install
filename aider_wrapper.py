@@ -1291,7 +1291,7 @@ class AiderVoiceGUI:
                     self.mic_stream.close()
                 except Exception as e:
                     self.log_message(f"Error closing mic stream: {e}")
-                    
+            
             if hasattr(self, 'spkr_stream'):
                 try:
                     self.spkr_stream.stop_stream()
