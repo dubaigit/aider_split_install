@@ -1905,10 +1905,23 @@ class WebSocketManager:
         except Exception as e:
             self.reconnect_attempts += 1
             self.parent.log_message(f"Reconnection attempt failed: {e}")
-            else:
-                print("Warning: Git functionality is disabled. Skipping git commit.")
 
-            # Get instructions content
+    def handle_git_functionality(self):
+        """Handle git functionality with proper error handling"""
+        if git is not None:
+            try:
+                repo = git.Repo(search_parent_directories=True)
+                repo.git.add(update=True)
+                repo.index.commit("Auto-commit before running aider")
+                print("Git commit created successfully.")
+            except git.exc.InvalidGitRepositoryError:
+                print("Warning: Not a git repository. Skipping git commit.")
+            except Exception as e:
+                print(f"Error creating git commit: {e}")
+        else:
+            print("Warning: Git functionality is disabled. Skipping git commit.")
+
+        # Get instructions content
     instructions = ""
     if args.clipboard:
         instructions = get_clipboard_content()
