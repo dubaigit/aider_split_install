@@ -508,10 +508,11 @@ class AiderVoiceGUI:
                     text = event.get("delta", {}).get("text", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
-                        # Ensure the response is also sent as audio
-                        if not self.response_active:
-                            self.response_active = True
-                            await self.send_audio_response(text)
+                        # Convert text response to speech
+                        await self.ws.send(json.dumps({
+                            "type": "text_to_speech.generate",
+                            "text": text
+                        }))
                 
                 elif event_type == "input_speech_transcription_completed":
                     text = event.get("transcription", {}).get("text", "")
@@ -546,7 +547,7 @@ class AiderVoiceGUI:
                         self.log_message(f"⚠️ Response failed: {error.get('code', 'unknown error')}")
                     else:
                         self.log_message("Response completed")
-                        # Ensure mic is re-enabled
+                        # Re-enable mic
                         self.mic_on_at = time.time()
                 
                 elif event_type == "error":
@@ -570,18 +571,7 @@ class AiderVoiceGUI:
         """Process transcribed voice commands"""
         self.log_message(f"Processing command: {text}")
         
-        # Normalize text for easier command recognition
-        command = text.lower()
-        
-        # Create context for better command understanding
-        context = {
-            'files': list(self.interface_state['files'].keys()),
-            'has_issues': bool(self.interface_state['issues']),
-            'aider_running': bool(self.aider_process and self.aider_process.poll() is None),
-            'clipboard_available': bool(self.interface_state['clipboard_history'])
-        }
-        
-        # Send the command to the assistant with context
+        # Send the command to the assistant
         await self.ws.send(json.dumps({
             "type": "conversation.item.create",
             "item": {
@@ -589,13 +579,7 @@ class AiderVoiceGUI:
                 "role": "user",
                 "content": [{
                     "type": "text",
-                    "text": f"""Command: {text}
-                    Current Context:
-                    - Files loaded: {', '.join(context['files']) if context['files'] else 'None'}
-                    - Has issues: {'Yes' if context['has_issues'] else 'No'}
-                    - Aider running: {'Yes' if context['aider_running'] else 'No'}
-                    - Clipboard available: {'Yes' if context['clipboard_available'] else 'No'}
-                    """
+                    "text": text
                 }]
             }
         }))
