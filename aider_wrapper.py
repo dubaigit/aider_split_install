@@ -1,3 +1,9 @@
+"""
+Voice-controlled Aider wrapper with GUI interface.
+Provides a graphical interface for interacting with Aider using voice commands,
+with support for audio processing, websocket communication, and clipboard management.
+"""
+
 import os
 import argparse
 import time
@@ -883,49 +889,41 @@ class AiderVoiceGUI:
             try:
                 message = await self.ws.recv()
                 event = json.loads(message)
-
+                
                 event_type = event.get("type")
-
+                
                 if event_type == "response.function_call":
-                    function_call = event.get("delta", {}).get("function_call", {})
-                    function_name = function_call.get("name")
-                    arguments = json.loads(function_call.get("arguments", "{}"))
+                    try:
+                        function_call = event.get("delta", {}).get("function_call", {})
+                        function_name = function_call.get("name")
+                        arguments = json.loads(function_call.get("arguments", "{}"))
 
-                    # Execute the local function
-                    if function_name and hasattr(self, function_name):
-                        self.log_message(f"Executing function: {function_name}")
-                        function = getattr(self, function_name)
-                        try:
-                            if asyncio.iscoroutinefunction(function):
-                                result = await function(**arguments)
-                            else:
-                                result = function(**arguments)
+                        if function_name and hasattr(self, function_name):
+                            self.log_message(f"Executing function: {function_name}")
+                            function = getattr(self, function_name)
+                            try:
+                                if asyncio.iscoroutinefunction(function):
+                                    result = await function(**arguments)
+                                else:
+                                    result = function(**arguments)
 
-                            # Send the result back to the assistant
-                            await self.ws.send(
-                                json.dumps(
-                                    {
-                                        "type": "function_call.result",
-                                        "name": function_name,
-                                        "result": result,
-                                    }
-                                )
-                            )
-                        except Exception as e:
-                            self.log_message(
-                                f"Error executing function {function_name}: {e}"
-                            )
-                            await self.ws.send(
-                                json.dumps(
-                                    {
-                                        "type": "function_call.error",
-                                        "name": function_name,
-                                        "error": str(e),
-                                    }
-                                )
-                            )
-                    else:
-                        self.log_message(f"Unknown function called: {function_name}")
+                                await self.ws.send(json.dumps({
+                                    "type": "function_call.result",
+                                    "name": function_name,
+                                    "result": result
+                                }))
+                            except (TypeError, ValueError) as e:
+                                self.log_message(f"Error executing function {function_name}: {e}")
+                                await self.ws.send(json.dumps({
+                                    "type": "function_call.error",
+                                    "name": function_name,
+                                    "error": str(e)
+                                }))
+                        else:
+                            self.log_message(f"Unknown function called: {function_name}")
+                    except json.JSONDecodeError as e:
+                        self.log_message(f"Error parsing function arguments: {e}")
+                        continue
 
                 elif event_type == "response.text.delta":
                     text = event.get("delta", {}).get("text", "")
@@ -939,13 +937,11 @@ class AiderVoiceGUI:
 
                 elif event_type == "response.audio.delta":
                     try:
-                        audio_content = base64.b64decode(event.get("delta", ""))
+                        audio_content = base64.b64decode(event.get('delta', ''))
                         if audio_content:
                             self.audio_buffer.extend(audio_content)
-                            self.log_message(
-                                f"Received {len(audio_content)} bytes of audio data"
-                            )
-                    except Exception as e:
+                            self.log_message(f'Received {len(audio_content)} bytes of audio data')
+                    except (TypeError, ValueError) as e:
                         self.log_message(f"Error processing audio response: {e}")
 
                 elif event_type == "response.audio.done":
@@ -956,15 +952,11 @@ class AiderVoiceGUI:
                     self.response_active = False
                     status = event.get("status")
                     if status == "incomplete":
-                        reason = event.get("status_details", {}).get(
-                            "reason", "unknown"
-                        )
+                        reason = event.get("status_details", {}).get("reason", "unknown")
                         self.log_message(f"🚫 Response incomplete: {reason}")
                     elif status == "failed":
                         error = event.get("status_details", {}).get("error", {})
-                        self.log_message(
-                            f"⚠️ Response failed: {error.get('code', 'unknown error')}"
-                        )
+                        self.log_message(f"⚠️ Response failed: {error.get('code', 'unknown error')}")
                     else:
                         self.log_message("Response completed")
 
@@ -980,65 +972,66 @@ class AiderVoiceGUI:
             except json.JSONDecodeError as e:
                 self.log_message(f"Error decoding message: {e}")
                 continue
-            except Exception as e:
-                self.log_message(f"Error handling websocket message: {e}")
+            except (websockets.exceptions.WebSocketException, ConnectionError) as e:
+                self.log_message(f"WebSocket error: {e}")
                 await asyncio.sleep(1)
                 continue
 
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
         command_processor = VoiceCommandProcessor(self)
-
+        
         try:
             # Update command history
-            self.interface_state.setdefault("command_history", []).append(
-                {"timestamp": time.time(), "command": text, "status": "processing"}
-            )
-
+            self.interface_state.setdefault('command_history', []).append({
+                'timestamp': time.time(),
+                'command': text,
+                'status': 'processing'
+            })
+            
             # Pre-process command
             processed_command = command_processor.preprocess_command(text)
             self.log_message(f"Processing command: {processed_command}")
-
+            
             # Validate command
             if not command_processor.validate_command(processed_command):
                 raise ValueError("Invalid command format")
-
+                
             # Execute command with retry logic
             max_retries = 3
             for attempt in range(max_retries):
                 try:
                     if self.ws and self.ws_manager.connection_state == "connected":
-                        await self.ws.send(
-                            json.dumps(
-                                {
-                                    "type": "conversation.item.create",
-                                    "item": {
-                                        "type": "message",
-                                        "role": "user",
-                                        "content": [
-                                            {"type": "text", "text": processed_command}
-                                        ],
-                                    },
-                                }
-                            )
-                        )
-
+                        await self.ws.send(json.dumps({
+                            "type": "conversation.item.create",
+                            "item": {
+                                "type": "message",
+                                "role": "user",
+                                "content": [{
+                                    "type": "text",
+                                    "text": processed_command
+                                }]
+                            }
+                        }))
+                        
                         # Update command status
-                        self.interface_state["command_history"][-1][
-                            "status"
-                        ] = "completed"
+                        self.interface_state['command_history'][-1]['status'] = 'completed'
                         break
-
-                except Exception as e:
+                        
+                except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
                     if attempt == max_retries - 1:
                         raise
                     self.log_message(f"Retry {attempt + 1}/{max_retries}: {e}")
                     await asyncio.sleep(1)
-
-        except Exception as e:
+                    
+        except ValueError as e:
+            self.log_message(f"❌ Command validation error: {e}")
+            self.interface_state['command_history'][-1]['status'] = 'failed'
+            self.interface_state['command_history'][-1]['error'] = str(e)
+        except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
             self.log_message(f"❌ Command processing error: {e}")
-            self.interface_state["command_history"][-1]["status"] = "failed"
-            self.interface_state["command_history"][-1]["error"] = str(e)
+            self.interface_state['command_history'][-1]['status'] = 'failed'
+            self.interface_state['command_history'][-1]['error'] = str(e)
 
 
 class ClipboardManager:
