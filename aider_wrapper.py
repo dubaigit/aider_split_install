@@ -916,9 +916,9 @@ class AiderVoiceGUI:
                     self.log_message(f"Failed to connect after {max_retries} attempts: {e}")
                     return False
 
-        self.log_message("Failed to connect after all retries") 
-        return False
+        self.log_message("Failed to connect after all retries")
         self.stop_voice_control()
+        raise ConnectionError from e
 
     async def process_audio_queue(self):
         """Process audio queue and send to OpenAI"""
