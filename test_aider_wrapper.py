@@ -10,6 +10,12 @@ class AsyncMock(MagicMock):
     async def __call__(self, *args, **kwargs):
         return super(AsyncMock, self).__call__(*args, **kwargs)
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
 class TestAiderVoiceGUI(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
@@ -60,18 +66,17 @@ class TestAiderVoiceGUI(unittest.TestCase):
     @patch('websockets.connect')
     def test_connect_websocket(self, mock_connect):
         """Test websocket connection"""
-        mock_ws = MagicMock()
+        # Create async mock for websocket
+        mock_ws = AsyncMock()
+        mock_ws.send = AsyncMock()
+        mock_ws.ping = AsyncMock()
         mock_connect.return_value = mock_ws
-
-        # Mock the send method
-        async def mock_send(data):
-            return None
-        mock_ws.send = mock_send
 
         async def run_test():
             result = await self.app.connect_websocket()
             self.assertTrue(result)
             self.assertEqual(self.app.ws, mock_ws)
+            mock_ws.send.assert_called_once()  # Verify session.update was sent
 
         # Create and run event loop
         loop = asyncio.new_event_loop()

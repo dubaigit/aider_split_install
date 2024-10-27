@@ -913,7 +913,7 @@ class AiderVoiceGUI:
                 asyncio.create_task(self.process_audio_queue())
 
                 self.log_message("Connected to OpenAI realtime API")
-                return
+                return True
 
             except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
                 self.log_message(f"Failed to connect to OpenAI: {e}")
