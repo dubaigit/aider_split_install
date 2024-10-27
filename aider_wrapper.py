@@ -608,55 +608,48 @@ class AiderVoiceGUI:
 
     async def process_voice_command(self, text):
         """Process transcribed voice commands"""
-        self.log_message(f"Processing command: {text}")
+        # Extract command if it exists
+        command = None
         
-        # Handle bash commands
-        if any(cmd in text.lower() for cmd in ["run", "execute", "bash", "terminal", "command"]):
-            # Extract the command part after any of these trigger words
-            for trigger in ["run", "execute", "bash", "terminal", "command"]:
-                if trigger in text.lower():
-                    command = text.lower().split(trigger, 1)[1].strip()
-                    if command:
-                        self.log_message(f"Executing command: {command}")
-                        self.execute_terminal_command(command)
-                        return
+        # Direct command patterns
+        if text.lower().startswith(('run ', 'execute ', 'bash ', '$')):
+            command = text.split(' ', 1)[1]
+        elif text.lower().startswith('cd '):
+            command = text
+        elif text.lower().startswith('ls'):
+            command = 'ls'
+        elif 'pip install' in text.lower():
+            command = text[text.lower().find('pip install'):]
         
-        # Handle file management commands
+        # Execute command if found
+        if command:
+            self.execute_terminal_command(command)
+            return
+        
+        # Handle file management commands without confirmation
         if "list files" in text.lower():
             files = list(self.added_files)
             if files:
-                response = "Currently added files:\n" + "\n".join([f"- {os.path.basename(f)}" for f in files])
-            else:
-                response = "No files are currently added."
-            await self.send_audio_response(response)
+                response = "\n".join([f"- {os.path.basename(f)}" for f in files])
+                self.log_message(response)
             return
             
-        elif "check issues" in text.lower() or "analyze issues" in text.lower():
+        elif "check issues" in text.lower():
             await self.analyze_and_check_issues()
-            return
-            
-        elif "analyze files" in text.lower():
-            await self.analyze_current_files()
             return
             
         elif "clear files" in text.lower():
             self.clear_files()
-            await self.send_audio_response("All files have been cleared.")
             return
             
         elif "remove file" in text.lower():
             filename = text.lower().split("remove file")[-1].strip()
             if filename:
                 self.remove_file_by_name(filename)
-            else:
-                await self.send_audio_response("Please specify which file to remove.")
             return
         
         # If no specific command matched, try to execute as a bash command
-        try:
-            self.execute_terminal_command(text)
-        except Exception as e:
-            await self.send_audio_response(f"I couldn't understand that command. Error: {e}")
+        self.execute_terminal_command(text)
 
     def remove_file_by_name(self, filename):
         """Remove a file by its name"""
@@ -1097,7 +1090,11 @@ class AiderVoiceGUI:
                 
                 # Update AI context
                 self.current_context["files"].add(file)
-                self.update_ai_context()
+                # Run update_ai_context through asyncio
+                asyncio.run_coroutine_threadsafe(
+                    self.update_ai_context(),
+                    self.loop
+                )
         
         if files:
             self.run_aider_with_files(files)
@@ -1116,7 +1113,11 @@ class AiderVoiceGUI:
             self.current_context["files"].remove(full_path)
             
             self.log_message(f"Removed file: {filename}")
-            self.update_ai_context()
+            # Run update_ai_context through asyncio
+            asyncio.run_coroutine_threadsafe(
+                self.update_ai_context(),
+                self.loop
+            )
 
     def clear_files(self):
         """Clear all files from the list"""
@@ -1124,7 +1125,11 @@ class AiderVoiceGUI:
         self.added_files.clear()
         self.current_context["files"].clear()
         self.log_message("Cleared all files")
-        self.update_ai_context()
+        # Run update_ai_context through asyncio
+        asyncio.run_coroutine_threadsafe(
+            self.update_ai_context(),
+            self.loop
+        )
 
     async def update_ai_context(self):
         """Update AI's context with current files"""
@@ -1259,66 +1264,23 @@ class AiderVoiceGUI:
             self.terminal_running = True
             self.terminal_queue = Queue()
             
-            # Use different approach based on platform
-            if os.name == 'posix':  # Unix/Linux/macOS
-                # Create pseudo-terminal more safely
-                try:
-                    master_fd, slave_fd = pty.openpty()
-                    # Set terminal size
-                    term_size = struct.pack('HHHH', 24, 80, 0, 0)
-                    fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, term_size)
-                    
-                    # Start shell without preexec_fn
-                    self.shell = subprocess.Popen(
-                        ['/bin/bash'],
-                        stdin=slave_fd,
-                        stdout=slave_fd,
-                        stderr=slave_fd,
-                        start_new_session=True,
-                        env=dict(os.environ, TERM='xterm')
-                    )
-                    
-                    # Store file descriptors
-                    self.master_fd = master_fd
-                    self.slave_fd = slave_fd
-                    
-                except Exception as e:
-                    self.log_message(f"Error creating PTY: {e}")
-                    # Fallback to basic pipe-based approach
-                    self.shell = subprocess.Popen(
-                        ['/bin/bash'],
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        bufsize=0,
-                        universal_newlines=True
-                    )
-                    self.master_fd = self.shell.stdout.fileno()
-                    self.slave_fd = self.shell.stdin.fileno()
-            
-            else:  # Windows
-                # Use basic pipe-based approach
-                self.shell = subprocess.Popen(
-                    ['cmd.exe'],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    bufsize=0,
-                    universal_newlines=True
-                )
-                self.master_fd = self.shell.stdout.fileno()
-                self.slave_fd = self.shell.stdin.fileno()
+            # Start shell process
+            self.shell = subprocess.Popen(
+                ['/bin/bash'] if os.name == 'posix' else ['cmd.exe'],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=1,
+                universal_newlines=True,
+                env=dict(os.environ, TERM='xterm-color')
+            )
             
             # Start output reader thread
             self.terminal_thread = Thread(
-                target=self.read_terminal_output, 
-                args=(self.master_fd,), 
+                target=self.read_terminal_output,
                 daemon=True
             )
             self.terminal_thread.start()
-            
-            # Register cleanup
-            atexit.register(self.cleanup_terminal)
             
             # Initial terminal prompt
             self.terminal.insert(tk.END, f"Terminal started in: {os.getcwd()}\n$ ")
@@ -1327,40 +1289,26 @@ class AiderVoiceGUI:
             
         except Exception as e:
             self.log_message(f"Error starting terminal: {e}")
-            # Create dummy terminal for UI
-            self.shell = None
-            self.master_fd = None
-            self.slave_fd = None
 
-    def read_terminal_output(self, fd):
+    def read_terminal_output(self):
         """Read terminal output in a separate thread"""
-        while self.terminal_running:
+        while self.terminal_running and self.shell:
             try:
-                if hasattr(self, 'shell') and self.shell and hasattr(self.shell, 'stdout'):
-                    # Pipe-based reading
-                    output = self.shell.stdout.readline()
-                    if output:
-                        self.terminal_queue.put(output)
-                        self.root.after(0, self.update_terminal_display)
-                elif fd is not None:
-                    # PTY-based reading
-                    output = os.read(fd, 1024)
-                    if output:
-                        try:
-                            decoded = output.decode()
-                            self.terminal_queue.put(decoded)
-                            self.root.after(0, self.update_terminal_display)
-                        except UnicodeDecodeError:
-                            pass
-                else:
-                    time.sleep(0.1)  # Prevent tight loop if no valid output source
-                            
-            except (OSError, IOError) as e:
-                if e.errno != errno.EIO:  # Ignore EIO error
-                    self.log_message(f"Error reading terminal: {e}")
-                break
+                # Read from stdout
+                output = self.shell.stdout.readline()
+                if output:
+                    self.terminal_queue.put(output)
+                    self.root.after(0, self.update_terminal_display)
+                
+                # Read from stderr
+                error = self.shell.stderr.readline()
+                if error:
+                    self.terminal_queue.put(f"Error: {error}")
+                    self.root.after(0, self.update_terminal_display)
+                
             except Exception as e:
-                self.log_message(f"Error in terminal thread: {e}")
+                if self.terminal_running:  # Only log if we're still supposed to be running
+                    self.log_message(f"Error reading terminal output: {e}")
                 break
             
             time.sleep(0.01)  # Small delay to prevent CPU hogging
@@ -1392,13 +1340,8 @@ class AiderVoiceGUI:
                 return
             
             # Write command to terminal
-            if hasattr(self.shell, 'stdin'):
-                # Pipe-based writing
-                self.shell.stdin.write(command + '\n')
-                self.shell.stdin.flush()
-            else:
-                # PTY-based writing
-                os.write(self.master_fd, (command + '\n').encode())
+            self.shell.stdin.write(command + '\n')
+            self.shell.stdin.flush()
             
             # Update display
             self.terminal.see(tk.END)
@@ -1414,41 +1357,22 @@ class AiderVoiceGUI:
             self.terminal.insert(tk.END, f"Error: File not found: {filepath}\n")
 
     def execute_terminal_command(self, command):
-        """Execute any command in terminal and capture output for AI"""
+        """Execute command in terminal"""
         try:
-            # Add command to terminal display
-            self.terminal.insert(tk.END, f"$ {command}\n")
-            
+            if not self.shell:
+                self.log_message("Terminal not available")
+                return
+                
             # Write command to terminal
-            os.write(self.master_fd, (command + '\n').encode())
+            self.shell.stdin.write(f"{command}\n")
+            self.shell.stdin.flush()
             
-            # Wait briefly for output
-            time.sleep(0.2)
-            
-            # Get terminal output
-            output = self.get_terminal_output()
-            
-            # Send output to AI for analysis
-            analysis_prompt = f"""
-            I executed the command: {command}
-            
-            Output:
-            {output}
-            
-            Please analyze the output and provide:
-            1. Summary of what happened
-            2. Any issues or errors
-            3. Suggested next steps or related commands
-            4. Any security concerns if applicable
-            """
-            
-            asyncio.run_coroutine_threadsafe(
-                self.send_ai_analysis(analysis_prompt),
-                self.loop
-            )
+            # Update terminal display
+            self.terminal.insert(tk.END, f"$ {command}\n")
+            self.terminal.see(tk.END)
             
         except Exception as e:
-            self.log_message(f"Error executing terminal command: {e}")
+            self.log_message(f"Error executing command: {e}")
 
     def get_terminal_output(self):
         """Get accumulated terminal output"""
