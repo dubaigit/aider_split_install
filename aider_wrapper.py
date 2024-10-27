@@ -1168,8 +1168,10 @@ class WebSocketManager:
                     await self._attempt_reconnect()
 
                 await asyncio.sleep(1)
-            except Exception as e:
+            except (websockets.exceptions.WebSocketException, ConnectionError) as e:
                 self.parent.log_message(f"Connection monitoring error: {e}")
+            except asyncio.CancelledError:
+                break
 
     async def _check_connection(self):
         """Check connection health with ping"""
@@ -1177,9 +1179,9 @@ class WebSocketManager:
             if self.parent.ws:
                 await self.parent.ws.ping()
                 self.last_ping_time = time.time()
-        except Exception:
+        except (websockets.exceptions.WebSocketException, ConnectionError) as e:
             self.connection_state = "disconnected"
-            self.parent.log_message("⚠️ WebSocket connection lost")
+            self.parent.log_message(f"⚠️ WebSocket connection lost: {e}")
             await self._attempt_reconnect()
 
     async def _attempt_reconnect(self):
@@ -1197,7 +1199,9 @@ class WebSocketManager:
             self.connection_state = "connected"
             self.reconnect_attempts = 0
             self.parent.log_message("✅ Successfully reconnected")
-        except Exception as e:
+        except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
             self.reconnect_attempts += 1
             self.parent.log_message(f"Reconnection attempt failed: {e}")
+        except asyncio.CancelledError:
+            raise
 
