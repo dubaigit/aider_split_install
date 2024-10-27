@@ -426,10 +426,6 @@ class AiderVoiceGUI:
         }
 
         # Parse command line arguments
-        self.args = self._parse_arguments()
-
-    def _parse_arguments(self):
-        """Parse command line arguments."""
         parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
         parser.add_argument(
             "--voice-only", action="store_true", help="Run in voice control mode only"
@@ -462,7 +458,8 @@ class AiderVoiceGUI:
             action="store_true",
             help="Automatically send ruff issues to aider (GUI mode only)",
         )
-        return parser.parse_args()
+        self.args = parser.parse_args()
+
 
         # Initialize all attributes
         self.response_active = False
