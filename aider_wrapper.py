@@ -360,9 +360,6 @@ class AiderVoiceGUI:
         self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
         self.keyboard_shortcuts = KeyboardShortcuts(self)
 
-        # Parse command line arguments
-        self.args = self._parse_arguments()
-
         # Initialize asyncio loop
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
