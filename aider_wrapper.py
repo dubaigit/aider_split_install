@@ -735,7 +735,9 @@ class AiderVoiceGUI:
                 output = self.aider_process.stdout.readline()
                 if not output:
                     break
-                self.log_message(output.decode().strip())
+                decoded = output.decode().strip()
+                self.log_message(decoded)
+                self.interface_state['aider_output'].append(decoded)
             except Exception as e:
                 self.log_message(f"Error reading Aider output: {e}")
                 break
@@ -743,9 +745,10 @@ class AiderVoiceGUI:
         # Check if process has finished
         if self.aider_process.poll() is not None:
             if self.aider_process.returncode == 0:
-                self.log_message("Aider completed successfully")
+                self.summarize_aider_session()
             else:
-                self.log_message("Aider encountered an error")
+                self.log_message("⚠️ Aider encountered an error")
+                self.summarize_aider_errors()
             self.aider_process = None
         else:
             # Process still running, check again later
@@ -875,7 +878,7 @@ class AiderVoiceGUI:
             print(message)
     
     def browse_files(self):
-        """Open file browser to add files"""
+        """Open file browser to add files to interface"""
         files = filedialog.askopenfilenames(
             title="Select Files",
             filetypes=(
@@ -886,10 +889,14 @@ class AiderVoiceGUI:
         )
         if files:
             for file in files:
-                if file not in self.temp_files:
-                    self.temp_files.append(file)
-                    self.files_listbox.insert(tk.END, file)
-            self.log_message(f"Added files: {', '.join(files)}")
+                try:
+                    content = self.read_file_content(file)
+                    if content is not None:
+                        self.interface_state['files'][file] = content
+                        self.files_listbox.insert(tk.END, file)
+                        self.log_message(f"Added file to interface: {file}")
+                except Exception as e:
+                    self.log_message(f"Error adding file {file}: {e}")
     
     def remove_selected_file(self):
         """Remove selected file from the list"""
@@ -1401,3 +1408,64 @@ def main():
 
 if __name__ == "__main__":
     main()
+    def read_file_content(self, filename):
+        """Read file content with robust error handling"""
+        try:
+            with open(filename, 'r', encoding='utf-8') as file:
+                content = file.read()
+                if not content:
+                    self.log_message(f"Warning: File {filename} is empty")
+                return content
+        except FileNotFoundError:
+            self.log_message(f"Error: File {filename} not found")
+        except PermissionError:
+            self.log_message(f"Error: Permission denied accessing {filename}")
+        except Exception as e:
+            self.log_message(f"Error reading file {filename}: {e}")
+        return None
+
+    def summarize_aider_session(self):
+        """Summarize the completed Aider session"""
+        self.log_message("\n=== Aider Session Summary ===")
+        
+        # Count files processed
+        files_processed = len(self.interface_state['files'])
+        self.log_message(f"📁 Files processed: {files_processed}")
+        
+        # Analyze output for changes
+        changes = []
+        for line in self.interface_state['aider_output']:
+            if "Changed" in line or "Modified" in line:
+                changes.append(line)
+        
+        if changes:
+            self.log_message("\n🔄 Changes made:")
+            for change in changes:
+                self.log_message(f"  • {change}")
+        else:
+            self.log_message("ℹ️ No files were modified")
+            
+        # Look for any remaining issues
+        issues = [line for line in self.interface_state['aider_output'] if "error" in line.lower()]
+        if issues:
+            self.log_message("\n⚠️ Remaining issues to address:")
+            for issue in issues[:5]:  # Show top 5 issues
+                self.log_message(f"  • {issue}")
+                
+        self.log_message("\n✅ Aider session completed successfully")
+
+    def summarize_aider_errors(self):
+        """Summarize errors from Aider session"""
+        self.log_message("\n=== Aider Error Summary ===")
+        
+        errors = []
+        for line in self.interface_state['aider_output']:
+            if any(err in line.lower() for err in ['error', 'exception', 'failed']):
+                errors.append(line)
+                
+        if errors:
+            self.log_message("❌ Errors encountered:")
+            for error in errors:
+                self.log_message(f"  • {error}")
+        
+        self.log_message("\nPlease check the logs above for more details")
