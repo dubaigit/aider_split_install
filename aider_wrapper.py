@@ -579,12 +579,7 @@ class AiderVoiceGUI:
                 for rec in analysis['recommendations']:
                     self.log_message(f"- {rec}")
 
-        try:
-            clipboard_content = pyperclip.paste()
-            if not clipboard_content.strip():
-                self.log_message("Clipboard is empty. Please copy some content first.")
-                return
-
+            # Start Aider process with clipboard content
             self.aider_process = subprocess.Popen(
                 ["python", "aider_wrapper.py", "-c"],
                 stdout=subprocess.PIPE,
