@@ -49,11 +49,11 @@ CHUNK_SIZE = 1024
 OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
 
 class AiderVoiceGUI:
-    def __init__(self, root):
-        self.root = root
+    def __init__(self, tk_root):
+        self.root = tk_root
         self.root.title("Aider Voice Assistant")
         self.root.geometry("800x600")
- def read_file_content(filename):
+def read_file_content(filename):
     with open(filename, 'r') as file:
         return file.read()
 
@@ -224,7 +224,10 @@ class VoiceAssistant:
             await self.ws.send(json.dumps({
                 "type": "session.update",
                 "session": {
-                    "input_audio_transcription": True,
+                    "input_audio_transcription": {
+                        "language": "en",
+                        "model": "whisper-1"
+                    },
                     "voice": "alloy",
                     "instructions": """
                     You are an AI assistant that helps control the aider code assistant through voice commands.
@@ -495,7 +498,7 @@ class VoiceAssistant:
 def read_file_content(filename):
     with open(filename, 'r') as file:
         return file.read()
-        async def handle_websocket_messages(self):
+    async def handle_websocket_messages(self):
         """Handle incoming websocket messages"""
         while self.running:
             try:
