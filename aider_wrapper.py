@@ -13,7 +13,7 @@ import base64
 import asyncio
 import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog  # Added filedialog import
+from tkinter import ttk, scrolledtext, filedialog
 import pyaudio
 
 # Optional imports with fallbacks
@@ -85,16 +85,16 @@ class AiderVoiceGUI:
         self.control_frame = ttk.LabelFrame(self.left_panel, text="Controls", padding="5")
         self.control_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
         
-        # Voice control button
-        self.voice_button = ttk.Button(
-            self.control_frame,
-            text="🎤 Start Voice Control",
-            command=self.toggle_voice_control
-        )
-        self.voice_button.grid(row=0, column=0, pady=5, padx=5, sticky='ew')
+        # Remove Voice Control button (Voice starts automatically)
+        # self.voice_button = ttk.Button(
+        #     self.control_frame,
+        #     text="🎤 Start Voice Control",
+        #     command=self.toggle_voice_control
+        # )
+        # self.voice_button.grid(row=0, column=0, pady=5, padx=5, sticky='ew')
         
         # Status label
-        self.status_label = ttk.Label(self.control_frame, text="Ready")
+        self.status_label = ttk.Label(self.control_frame, text="Initializing Voice Control...")
         self.status_label.grid(row=0, column=1, pady=5, padx=5)
         
         # Action buttons
@@ -112,9 +112,23 @@ class AiderVoiceGUI:
         )
         self.check_issues_button.grid(row=1, column=1, pady=5, padx=5, sticky='ew')
         
+        # Listbox to display added files
+        self.files_frame = ttk.LabelFrame(self.left_panel, text="Added Files", padding="5")
+        self.files_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.files_listbox = tk.Listbox(self.files_frame, height=10)
+        self.files_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        self.remove_file_button = ttk.Button(
+            self.files_frame,
+            text="🗑️ Remove Selected",
+            command=self.remove_selected_file
+        )
+        self.remove_file_button.grid(row=1, column=0, pady=5, padx=5, sticky='ew')
+        
         # Input frame
-        self.input_frame = ttk.LabelFrame(self.left_panel, text="Input/Clipboard", padding="5")
-        self.input_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        self.input_frame = ttk.LabelFrame(self.left_panel, text="Input/Instructions", padding="5")
+        self.input_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
         self.input_text = scrolledtext.ScrolledText(self.input_frame, height=10)
         self.input_text.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -128,7 +142,7 @@ class AiderVoiceGUI:
         
         self.send_button = ttk.Button(
             self.input_frame,
-            text="📤 Send to Assistant",
+            text="📤 Send to Aider",
             command=self.send_input_text
         )
         self.send_button.grid(row=1, column=1, pady=5, padx=5)
@@ -153,7 +167,7 @@ class AiderVoiceGUI:
         
         # Create log frame
         self.log_frame = ttk.LabelFrame(self.left_panel, text="Log", padding="5")
-        self.log_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        self.log_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
         # Create output text area (for logging)
         self.output_text = scrolledtext.ScrolledText(self.log_frame, height=10)
@@ -165,10 +179,14 @@ class AiderVoiceGUI:
         self.main_frame.columnconfigure(1, weight=2)  # Right panel takes more space
         self.main_frame.rowconfigure(0, weight=1)
         self.left_panel.columnconfigure(0, weight=1)
-        self.left_panel.rowconfigure(2, weight=1)  # Log frame takes remaining space
+        self.left_panel.rowconfigure(4, weight=1)  # Log frame takes remaining space
         self.right_panel.columnconfigure(0, weight=1)
         self.right_panel.rowconfigure(0, weight=1)
         self.right_panel.rowconfigure(1, weight=1)
+        self.files_frame.columnconfigure(0, weight=1)
+        self.input_frame.columnconfigure(0, weight=1)
+        self.input_frame.columnconfigure(1, weight=1)
+        self.control_frame.columnconfigure(1, weight=1)
         
         # Initialize other attributes
         self.recording = False
@@ -191,7 +209,7 @@ class AiderVoiceGUI:
         self.audio_buffer = bytearray()  # Changed from bytes to bytearray
         self.mic_queue = queue.Queue()
         self.mic_on_at = 0
-        self.mic_active = None
+        self.mic_active = False
         self._stop_event = threading.Event()
         
         # Add performance settings
@@ -203,20 +221,21 @@ class AiderVoiceGUI:
         # Initialize audio processing thread
         self.audio_thread = None
         
-        # Rest of initialization...
-
+        # Automatically start voice control
+        self.start_voice_control()
+    
     def run_async_loop(self):
         """Run asyncio event loop in a separate thread"""
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
-
+    
     def toggle_voice_control(self):
         """Toggle voice control on/off"""
         if not self.recording:
             self.start_voice_control()
         else:
             self.stop_voice_control()
-
+    
     def start_voice_control(self):
         """Start voice control"""
         if None in (sd, np, websockets, OpenAI):
@@ -224,7 +243,7 @@ class AiderVoiceGUI:
             return
             
         self.recording = True
-        self.voice_button.configure(text="🔴 Stop Voice Control")
+        # self.voice_button.configure(text="🔴 Stop Voice Control")
         self.status_label.configure(text="Listening...")
         
         # Start audio streams
@@ -254,11 +273,11 @@ class AiderVoiceGUI:
         
         # Connect to OpenAI WebSocket
         asyncio.run_coroutine_threadsafe(self.connect_websocket(), self.loop)
-
+    
     def stop_voice_control(self):
         """Stop voice control"""
         self.recording = False
-        self.voice_button.configure(text="🎤 Start Voice Control")
+        # self.voice_button.configure(text="🎤 Start Voice Control")
         self.status_label.configure(text="Ready")
         
         # Stop audio streams
@@ -276,7 +295,7 @@ class AiderVoiceGUI:
         
         # Terminate PyAudio
         self.p.terminate()
-
+    
     def _mic_callback(self, in_data, frame_count, time_info, status):
         """Microphone callback that queues audio chunks."""
         if time.time() > self.mic_on_at:
@@ -294,7 +313,7 @@ class AiderVoiceGUI:
                 self.log_message('🎙️🔴 Mic suppressed')
                 self.mic_active = False
         return (None, pyaudio.paContinue)
-
+    
     def _process_audio_thread(self):
         """Process audio in a separate thread"""
         while self.recording:
@@ -322,7 +341,7 @@ class AiderVoiceGUI:
                 self.log_message(f"Error in audio processing thread: {e}")
             
             time.sleep(0.01)  # Short sleep to prevent tight loop
-
+    
     def _spkr_callback(self, in_data, frame_count, time_info, status):
         """Speaker callback that plays audio."""
         bytes_needed = frame_count * 2
@@ -337,7 +356,7 @@ class AiderVoiceGUI:
             self.audio_buffer = bytearray()  # Reset with empty bytearray
 
         return (audio_chunk, pyaudio.paContinue)
-
+    
     async def connect_websocket(self):
         """Connect to OpenAI's realtime websocket API"""
         try:
@@ -365,12 +384,12 @@ class AiderVoiceGUI:
                     "temperature": 0.8,
                     "max_response_output_tokens": 2048,
                     "instructions": """
-                    You are an AI assistant that helps control the aider code assistant through voice commands.
+                    You are an AI assistant that helps control the Aider code assistant through voice commands.
                     Commands you understand:
-                    - Run aider with clipboard content
-                    - Add files to aider (from current directory)
-                    - Check for issues and send to aider
-                    - Summarize what happened when aider finishes
+                    - Run Aider with clipboard content
+                    - Add files to Aider (from current directory)
+                    - Check for issues and send to Aider
+                    - Summarize what happened when Aider finishes
                     
                     Always confirm what action you're taking and provide clear feedback.
                     Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
@@ -394,7 +413,7 @@ class AiderVoiceGUI:
         except Exception as e:
             self.log_message(f"Failed to connect to OpenAI: {e}")
             self.stop_voice_control()
-
+    
     async def process_audio_queue(self):
         """Process audio queue and send to OpenAI"""
         while self.recording:
@@ -412,7 +431,7 @@ class AiderVoiceGUI:
                     self.log_message(f"Error sending audio data: {e}")
             
             await asyncio.sleep(0.05)
-
+    
     async def handle_websocket_messages(self):
         """Handle incoming websocket messages"""
         while self.ws and self.recording:
@@ -469,33 +488,47 @@ class AiderVoiceGUI:
             except Exception as e:
                 self.log_message(f"Error handling websocket message: {e}")
                 self.log_message(f"Event content: {json.dumps(event, indent=2)}")
-
+    
     async def process_voice_command(self, text):
         """Process transcribed voice commands"""
         self.log_message(f"Processing command: {text}")
         
-        if "run aider" in text.lower() and "clipboard" in text.lower():
-            self.log_message("Running aider with clipboard content...")
+        # Normalize text for easier command recognition
+        command = text.lower()
+        
+        if "run aider" in command and "clipboard" in command:
+            self.log_message("Running Aider with clipboard content...")
             self.run_aider_with_clipboard()
             
-        elif "add files" in text.lower():
-            self.log_message("Adding files to aider...")
-            await self.add_files_to_aider()
+        elif "add files" in command:
+            self.log_message("Adding files to Aider...")
+            self.browse_files()
             
-        elif "check" in text.lower() and "issues" in text.lower():
+        elif "check" in command and "issues" in command:
             self.log_message("Checking for issues...")
             await self.check_for_issues()
             
+        elif "list files" in command:
+            self.log_message("Listing added files...")
+            self.list_added_files()
+        
+        elif "navigate to" in command:
+            # Example: "Navigate to src directory"
+            directory = command.replace("navigate to", "").strip()
+            self.navigate_to_directory(directory)
+        
         else:
             await self.send_audio_response(
                 "I didn't understand that command. You can say:\n" +
-                "- Run aider with clipboard content\n" +
-                "- Add files to aider\n" +
-                "- Check for issues"
+                "- Run Aider with clipboard content\n" +
+                "- Add files to Aider\n" +
+                "- Check for issues\n" +
+                "- List added files\n" +
+                "- Navigate to a directory"
             )
-
+    
     def run_aider_with_clipboard(self):
-        """Run aider using clipboard content"""
+        """Run Aider using clipboard content"""
         if self.aider_process and self.aider_process.poll() is None:
             self.log_message("Aider is already running. Please wait for it to finish.")
             return
@@ -511,16 +544,16 @@ class AiderVoiceGUI:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            self.log_message("Started aider with clipboard content")
+            self.log_message("Started Aider with clipboard content")
             
             # Monitor process output
             self.root.after(100, self.check_aider_process)
             
         except Exception as e:
-            self.log_message(f"Error running aider with clipboard: {e}")
-
+            self.log_message(f"Error running Aider with clipboard: {e}")
+    
     async def add_files_to_aider(self):
-        """Add files from current directory to aider"""
+        """Add files from current directory to Aider"""
         if self.aider_process and self.aider_process.poll() is None:
             self.log_message("Aider is already running. Please wait for it to finish.")
             return
@@ -534,15 +567,15 @@ class AiderVoiceGUI:
                     stderr=subprocess.PIPE,
                     stdin=subprocess.PIPE
                 )
-                self.log_message(f"Added {len(files)} files to aider")
+                self.log_message(f"Added {len(files)} files to Aider")
                 self.check_aider_process()
             else:
                 self.log_message("No code files found in current directory")
         except Exception as e:
-            self.log_message(f"Error adding files to aider: {e}")
-
+            self.log_message(f"Error adding files to Aider: {e}")
+    
     def run_aider_with_files(self, files):
-        """Run aider with selected files"""
+        """Run Aider with selected files"""
         if self.aider_process and self.aider_process.poll() is None:
             self.log_message("Aider is already running. Please wait for it to finish.")
             return
@@ -554,13 +587,13 @@ class AiderVoiceGUI:
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE
             )
-            self.log_message(f"Started aider with files: {', '.join(files)}")
+            self.log_message(f"Started Aider with files: {', '.join(files)}")
             self.check_aider_process()
         except Exception as e:
-            self.log_message(f"Error running aider with files: {e}")
-
+            self.log_message(f"Error running Aider with files: {e}")
+    
     def check_aider_process(self):
-        """Check aider process status and output"""
+        """Check Aider process status and output"""
         if not self.aider_process:
             return
 
@@ -572,7 +605,7 @@ class AiderVoiceGUI:
                     break
                 self.log_message(output.decode().strip())
             except Exception as e:
-                self.log_message(f"Error reading aider output: {e}")
+                self.log_message(f"Error reading Aider output: {e}")
                 break
 
         # Check if process has finished
@@ -585,7 +618,7 @@ class AiderVoiceGUI:
         else:
             # Process still running, check again later
             self.root.after(100, self.check_aider_process)
-
+    
     def auto_check_issues(self):
         """Automatically check for issues in auto mode"""
         if not self.auto_mode:
@@ -598,9 +631,9 @@ class AiderVoiceGUI:
         
         # Run checks
         asyncio.run_coroutine_threadsafe(self.check_for_issues(), self.loop)
-
+    
     async def check_for_issues(self):
-        """Check for code issues and send to aider"""
+        """Check for code issues and send to Aider"""
         if self.fixing_issues:
             self.log_message("Still working on previous issues. Please wait.")
             return
@@ -640,7 +673,7 @@ class AiderVoiceGUI:
                 self.log_message("Found mypy issues")
             
             if issues_found:
-                self.log_message("Issues found, sending to aider...")
+                self.log_message("Issues found, sending to Aider...")
                 issues_file = tempfile.NamedTemporaryFile(mode='w', delete=False, prefix='aider_issues_', suffix='.txt')
                 self.temp_files.append(issues_file.name)
                 
@@ -653,7 +686,7 @@ class AiderVoiceGUI:
                     stderr=subprocess.PIPE
                 )
                 
-                self.log_message("Started aider to fix issues")
+                self.log_message("Started Aider to fix issues")
                 
                 # Monitor process output
                 self.root.after(100, self.check_aider_process)
@@ -662,7 +695,7 @@ class AiderVoiceGUI:
                 if self.auto_mode:
                     # Schedule next check
                     self.root.after(5000, self.auto_check_issues)
-                
+            
         except Exception as e:
             self.log_message(f"Error checking for issues: {e}")
         finally:
@@ -674,7 +707,7 @@ class AiderVoiceGUI:
                 except OSError:
                     pass
             self.temp_files = []
-
+    
     async def send_audio_response(self, text):
         """Send text to OpenAI for voice response"""
         if self.ws:
@@ -692,14 +725,14 @@ class AiderVoiceGUI:
                 }))
             except Exception as e:
                 self.log_message(f"Error sending audio response: {e}")
-
+    
     def log_message(self, message):
         """Log a message to the GUI"""
         try:
             self.root.after(0, self._update_log, message)
         except Exception:
             print(message)  # Fallback to console if GUI update fails
-
+    
     def _update_log(self, message):
         """Update log in GUI thread"""
         try:
@@ -708,7 +741,7 @@ class AiderVoiceGUI:
         except Exception as e:
             print(f"Error updating log: {e}")
             print(message)
-
+    
     def browse_files(self):
         """Open file browser to add files"""
         files = filedialog.askopenfilenames(
@@ -720,10 +753,22 @@ class AiderVoiceGUI:
             )
         )
         if files:
-            self.log_message(f"Adding files: {', '.join(files)}")
-            # Add files to aider
-            self.run_aider_with_files(files)
-
+            for file in files:
+                if file not in self.temp_files:
+                    self.temp_files.append(file)
+                    self.files_listbox.insert(tk.END, file)
+            self.log_message(f"Added files: {', '.join(files)}")
+    
+    def remove_selected_file(self):
+        """Remove selected file from the list"""
+        selected_indices = self.files_listbox.curselection()
+        for index in reversed(selected_indices):
+            file = self.files_listbox.get(index)
+            self.files_listbox.delete(index)
+            if file in self.temp_files:
+                self.temp_files.remove(file)
+            self.log_message(f"Removed file: {file}")
+    
     def check_all_issues(self):
         """Run both ruff and mypy checks"""
         self.issues_text.delete('1.0', tk.END)
@@ -754,21 +799,17 @@ class AiderVoiceGUI:
         except Exception as e:
             self.issues_text.insert(tk.END, f"Error running mypy: {e}\n")
         self.issues_text.see(tk.END)
-        if hasattr(self, 'tabs') and hasattr(self, 'issues_frame'):
-            self.tabs.select(self.issues_frame)
-
+    
     def use_clipboard_content(self):
         """Get content from clipboard and show in input text"""
         try:
             content = pyperclip.paste()
             self.input_text.delete('1.0', tk.END)
             self.input_text.insert('1.0', content)
-            if hasattr(self, 'tabs') and hasattr(self, 'input_frame'):
-                self.tabs.select(self.input_frame)
-            self.log_message("Clipboard content loaded into input tab")
+            self.log_message("Clipboard content loaded into input")
         except Exception as e:
             self.log_message(f"Error getting clipboard content: {e}")
-
+    
     def send_input_text(self):
         """Send input text to assistant for processing"""
         content = self.input_text.get('1.0', tk.END).strip()
@@ -781,7 +822,25 @@ class AiderVoiceGUI:
             )
         else:
             self.log_message("No input text to process")
-
+    
+    def list_added_files(self):
+        """List all added files in the transcription window"""
+        files = self.temp_files
+        if files:
+            self.log_message("Added Files:")
+            for file in files:
+                self.log_message(f" - {file}")
+        else:
+            self.log_message("No files added.")
+    
+    def navigate_to_directory(self, directory):
+        """Navigate to a specified directory"""
+        try:
+            os.chdir(directory)
+            self.log_message(f"Navigated to directory: {directory}")
+        except Exception as e:
+            self.log_message(f"Error navigating to directory '{directory}': {e}")
+    
     def update_transcription(self, text, is_assistant=False):
         """Update transcription with new text"""
         prefix = "🤖 Assistant: " if is_assistant else "🎤 You: "
@@ -791,7 +850,7 @@ class AiderVoiceGUI:
         
         # Also update the log
         self.log_message(f"{prefix}{text}")
-
+    
 def read_file_content(filename):
     with open(filename, 'r') as file:
         return file.read()
@@ -870,9 +929,9 @@ Accomplish given tasks iteratively, breaking them down into clear steps:
 2. Prioritize goals in a logical order.
 3. Work through goals sequentially, utilizing your multi-role expertise as needed.
 4. Before taking action, analyze the task within <thinking></thinking> tags:
-   - Determine which specialized role is most appropriate for the current step.
-   - Consider the context and requirements of the task.
-   - Plan your approach using the capabilities of the chosen role.
+    - Determine which specialized role is most appropriate for the current step.
+    - Consider the context and requirements of the task.
+    - Plan your approach using the capabilities of the chosen role.
 5. Execute the planned actions, explicitly mentioning when switching roles for clarity.
 6. Once the task is completed, present the result to the user.
 7. If feedback is provided, use it to make improvements and iterate on the solution.
@@ -881,8 +940,7 @@ Accomplish given tasks iteratively, breaking them down into clear steps:
 
 To make this change, we need to modify `main.py` and create a new file `hello.py`:
 
-1. Make a new `hello.py` file w
-ith `hello()` in it.
+1. Make a new `hello.py` file with `hello()` in it.
 2. Remove `hello()` from `main.py` and replace it with an import.
 
 Here are the *SEARCH/REPLACE* blocks:
@@ -946,7 +1004,7 @@ If you want to put code in a new file, use a *SEARCH/REPLACE* block with:
     ###Task problem_description
     <task_description>
     {task}
-    </task_description>
+    </problem_description>
 
 '''
     content = f"{prompt}\n\n<problem_description>\n{instructions}\n</problem_description>"
@@ -1131,4 +1189,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
