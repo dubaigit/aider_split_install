@@ -896,18 +896,112 @@ class AiderVoiceGUI:
                         self.interface_state['files'][file] = content
                         self.files_listbox.insert(tk.END, file)
                         added_files.append(file)
-                        self.log_message(f"Added file to interface: {file}")
+                        
+                        # Analyze the file based on its type
+                        file_ext = os.path.splitext(file)[1].lower()
+                        analysis_result = ""
+                        if file_ext == '.py':
+                            analysis_result = self.analyze_python_file(content)
+                        elif file_ext in ['.js', '.jsx']:
+                            analysis_result = self.analyze_javascript_file(content)
+                            
+                        self.log_message(f"Added and analyzed file: {file}")
+                        if analysis_result:
+                            self.log_message(f"Analysis results for {file}:")
+                            self.log_message(analysis_result)
+                            
                 except Exception as e:
                     self.log_message(f"Error adding file {file}: {e}")
             
             if added_files:
-                # Send voice feedback about added files
-                file_names = ", ".join(os.path.basename(f) for f in added_files)
+                # Send detailed voice feedback about added files
+                file_summary = self.generate_file_summary(added_files)
                 asyncio.run_coroutine_threadsafe(
-                    self.send_audio_response(f"I've added {len(added_files)} files: {file_names}. Would you like me to check them for issues?"),
+                    self.send_audio_response(file_summary),
                     self.loop
                 )
     
+    def analyze_python_file(self, content):
+        """Analyze Python file content"""
+        analysis = []
+        
+        # Check for imports
+        imports = re.findall(r'^import\s+.*$|^from\s+.*\s+import\s+.*$', content, re.MULTILINE)
+        if imports:
+            analysis.append("Found imports: " + str(len(imports)))
+            
+        # Check for classes
+        classes = re.findall(r'^class\s+\w+.*:$', content, re.MULTILINE)
+        if classes:
+            analysis.append("Found classes: " + str(len(classes)))
+            
+        # Check for functions
+        functions = re.findall(r'^def\s+\w+\s*\(.*\):$', content, re.MULTILINE)
+        if functions:
+            analysis.append("Found functions: " + str(len(functions)))
+            
+        # Check for TODO comments
+        todos = re.findall(r'#\s*TODO:', content, re.IGNORECASE)
+        if todos:
+            analysis.append("Found TODOs: " + str(len(todos)))
+            
+        return "\n".join(analysis)
+    
+    def analyze_javascript_file(self, content):
+        """Analyze JavaScript file content"""
+        analysis = []
+        
+        # Check for imports/requires
+        imports = re.findall(r'^import\s+.*$|^const.*require\(.*\)$', content, re.MULTILINE)
+        if imports:
+            analysis.append("Found imports/requires: " + str(len(imports)))
+            
+        # Check for classes
+        classes = re.findall(r'^class\s+\w+.*{$', content, re.MULTILINE)
+        if classes:
+            analysis.append("Found classes: " + str(len(classes)))
+            
+        # Check for functions
+        functions = re.findall(r'^(function\s+\w+|\w+\s*=\s*function|\w+\s*:\s*function)', content, re.MULTILINE)
+        if functions:
+            analysis.append("Found functions: " + str(len(functions)))
+            
+        # Check for React components
+        components = re.findall(r'^const\s+\w+\s*=\s*\(\s*\)\s*=>\s*{', content, re.MULTILINE)
+        if components:
+            analysis.append("Found React components: " + str(len(components)))
+            
+        return "\n".join(analysis)
+    
+    def generate_file_summary(self, files):
+        """Generate a detailed summary of added files"""
+        summary = f"I've added {len(files)} files to the workspace. "
+        
+        # Group files by type
+        file_types = {}
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            file_types[ext] = file_types.get(ext, 0) + 1
+            
+        # Add file type breakdown
+        type_summary = []
+        for ext, count in file_types.items():
+            type_name = {
+                '.py': 'Python',
+                '.js': 'JavaScript',
+                '.jsx': 'React',
+                '.html': 'HTML',
+                '.css': 'CSS'
+            }.get(ext, ext[1:].upper())
+            type_summary.append(f"{count} {type_name}")
+            
+        summary += "These include " + ", ".join(type_summary) + ". "
+        
+        # Add analysis prompt
+        summary += "Would you like me to analyze these files for potential issues?"
+        
+        return summary
+
     def remove_selected_file(self):
         """Remove selected file from the list"""
         selected_indices = self.files_listbox.curselection()
