@@ -1,7 +1,7 @@
 # [Previous imports remain unchanged...]
 
 # Update the WebSocket URL to match the current API endpoint
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/speech"  # Updated endpoint
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/realtime"  # Updated endpoint
 
 class AiderVoiceGUI:
     def __init__(self, root):
@@ -13,27 +13,27 @@ class AiderVoiceGUI:
             headers = {
                 "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
                 "Content-Type": "application/json",
-                "OpenAI-Beta": "speech-streaming=v1"  # Updated beta header
+                "OpenAI-Beta": "realtime-audio/v1"
             }
             
             self.ws = await websockets.connect(
-                f"{OPENAI_WEBSOCKET_URL}?model=gpt-4-1106-preview",
+                OPENAI_WEBSOCKET_URL,
                 extra_headers=headers
             )
         
-            # Initialize session with updated configuration
+            # Initialize session with current API configuration
             await self.ws.send(json.dumps({
-                "type": "session.create",
-                "session": {
-                    "model": "gpt-4-1106-preview",
-                    "speech": {  # Updated configuration structure
+                "type": "init",
+                "model": "gpt-4-1106-preview",
+                "settings": {
+                    "speech": {
                         "model": "tts-1",
                         "voice": "alloy"
                     },
-                    "detection": {  # Updated detection settings
-                        "type": "vad",
+                    "vad": {
+                        "enabled": true,
                         "threshold": 0.5,
-                        "min_silence_duration": 300
+                        "min_silence_duration_ms": 300
                     },
                     "temperature": 0.8,
                     "max_tokens": 2048,
@@ -80,6 +80,8 @@ class AiderVoiceGUI:
                 self.log_message("Error: API endpoint not found. Please check if the API URL is correct.")
             elif e.status_code == 401:
                 self.log_message("Error: Authentication failed. Please check your OpenAI API key.")
+            elif e.status_code == 429:
+                self.log_message("Error: Rate limit exceeded. Please try again later.")
             else:
                 self.log_message(f"Error: Unexpected status code {e.status_code}")
             self.stop_voice_control()
