@@ -650,8 +650,13 @@ class AiderVoiceGUI:
                     }))
                 except Exception as e:
                     self.log_message(f"Error sending audio data: {e}")
-            
-            await asyncio.sleep(0.05)
+                    
+                await asyncio.sleep(0.05)
+            except Empty:
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                self.log_message(f"Error processing audio queue: {e}")
+                await asyncio.sleep(0.05)
     
     async def handle_websocket_messages(self):
         """Handle incoming websocket messages, including function calls."""
