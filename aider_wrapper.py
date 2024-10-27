@@ -1282,3 +1282,23 @@ class WebSocketManager:
         except asyncio.CancelledError:
             return
 
+
+def main():
+    """Main entry point for the Aider Voice Assistant"""
+    root = tk.Tk()
+    root.geometry("1200x800")
+    
+    # Create and initialize the application
+    app = AiderVoiceGUI(root)
+    
+    # Start voice control if dependencies are available
+    if all([sd, np, websockets, OpenAI]):
+        root.after(1000, app.start_voice_control)
+    
+    # Start the Tkinter event loop
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+
