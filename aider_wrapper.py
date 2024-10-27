@@ -64,7 +64,7 @@ SAMPLE_RATE = 24000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 REENGAGE_DELAY_MS = 500
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/audio/speech"
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
 
 class AiderVoiceGUI:
     def __init__(self, root):
@@ -414,31 +414,28 @@ class AiderVoiceGUI:
         """Connect to OpenAI's realtime websocket API"""
         try:
             self.ws = await websockets.connect(
-                OPENAI_WEBSOCKET_URL,
+                f"{OPENAI_WEBSOCKET_URL}?model=gpt-4",
                 extra_headers={
                     "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
                     "Content-Type": "application/json",
-                    "OpenAI-Beta": "speech-streaming=v1"
+                    "OpenAI-Beta": "realtime=v1"
                 }
             )
             
             # Initialize session with correct configuration
             await self.ws.send(json.dumps({
-                "type": "session.create",
+                "type": "session.update",
                 "session": {
-                    "model": "gpt-4o",
+                    "model": "gpt-4",
                     "voice": "alloy",
-                    "response_format": {
-                        "type": "text_and_speech",
-                        "voice": "alloy"
-                    },
-                    "speech_detection": {
-                        "type": "vad",
+                    "turn_detection": {
+                        "type": "server_vad",
                         "threshold": 0.5,
-                        "min_silence_duration_ms": 300
+                        "prefix_padding_ms": 200,
+                        "silence_duration_ms": 300
                     },
                     "temperature": 0.8,
-                    "max_tokens": 2048,
+                    "max_response_output_tokens": 2048,
                     "instructions": """
                     You are an AI assistant that helps control the Aider code assistant through voice commands.
                     
@@ -576,14 +573,14 @@ class AiderVoiceGUI:
         
         # Send the command to the assistant
         await self.ws.send(json.dumps({
-            "type": "message.create",
-            "message": {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
                 "role": "user",
-                "content": text,
-                "response_format": {
-                    "type": "text_and_audio",
-                    "voice": "alloy"
-                }
+                "content": [{
+                    "type": "text",
+                    "text": text
+                }]
             }
         }))
         
