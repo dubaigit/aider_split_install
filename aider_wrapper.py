@@ -294,7 +294,7 @@ class AiderVoiceGUI:
         self.fixing_issues = False
         self.mic_active = False
         self.mic_on_at = 0
-        self._stop_event = threading.Event()
+        self.stop_event = threading.Event()
         self.log_frequency = 50
         self.log_counter = 0
         self.chunk_buffer = []
@@ -685,7 +685,7 @@ class AiderVoiceGUI:
             channels=CHANNELS,
             rate=SAMPLE_RATE,
             input=True,
-            stream_callback=self._mic_callback,
+            stream_callback=self.handle_mic_input,
             frames_per_buffer=CHUNK_SIZE,
         )
         self.spkr_stream = self.p.open(
@@ -693,7 +693,7 @@ class AiderVoiceGUI:
             channels=CHANNELS,
             rate=SAMPLE_RATE,
             output=True,
-            stream_callback=self._spkr_callback,
+            stream_callback=self.handle_speaker_output,
             frames_per_buffer=CHUNK_SIZE,
         )
 
@@ -731,7 +731,7 @@ class AiderVoiceGUI:
         # Terminate PyAudio
         self.p.terminate()
 
-    async def _mic_callback(
+    async def handle_mic_input(
         self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int
     ) -> tuple[None, int]:
         """Handle microphone input callback from PyAudio.
@@ -827,7 +827,7 @@ class AiderVoiceGUI:
 
             await asyncio.sleep(0.01)  # Cooperative yield
 
-    async def _spkr_callback(
+    async def handle_speaker_output(
         self, _in_data: bytes, frame_count: int, _time_info: dict, _status: int
     ) -> tuple[bytes, int]:
         """Handle speaker output callback from PyAudio.
@@ -1202,7 +1202,7 @@ class WebSocketManager:
 
     async def start_monitoring(self):
         """Start connection monitoring"""
-        self.monitoring_task = asyncio.create_task(self._monitor_connection())
+        self.monitoring_task = asyncio.create_task(self.monitor_connection())
 
     async def _monitor_connection(self):
         """Monitor connection health and handle reconnection"""
@@ -1210,9 +1210,9 @@ class WebSocketManager:
             try:
                 if self.connection_state == "connected":
                     if time.time() - self.last_ping_time > self.ping_interval:
-                        await self._check_connection()
+                        await self.check_connection()
                 elif self.connection_state == "disconnected":
-                    await self._attempt_reconnect()
+                    await self.attempt_reconnect()
 
                 await asyncio.sleep(1)
             except websockets.exceptions.WebSocketException as e:
@@ -1234,7 +1234,7 @@ class WebSocketManager:
         except ConnectionError as e:
             self.connection_state = "disconnected"
             self.parent.log_message(f"⚠️ WebSocket connection lost due to connection error: {e}")
-            await self._attempt_reconnect()
+            await self.attempt_reconnect()
 
     async def _attempt_reconnect(self):
         """Attempt to reconnect with exponential backoff"""
