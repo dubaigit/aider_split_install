@@ -387,5 +387,103 @@ class TestWebSocketManager(unittest.TestCase):
             loop.close()
             asyncio.set_event_loop(None)
 
+class TestClipboardManager(unittest.TestCase):
+    def setUp(self):
+        """Set up test environment"""
+        self.parent = MagicMock()
+        self.parent.interface_state = {}
+        self.parent.log_message = MagicMock()
+        self.manager = ClipboardManager(self.parent)
+
+    def test_init(self):
+        """Test initialization"""
+        self.assertEqual(self.manager.previous_content, "")
+        self.assertFalse(self.manager.monitoring)
+        self.assertIsNone(self.manager.monitoring_task)
+        self.assertEqual(self.manager.update_interval, 0.5)
+        self.assertEqual(self.manager.max_content_size, 1024 * 1024)
+        self.assertEqual(self.manager.error_count, 0)
+        self.assertEqual(self.manager.max_errors, 3)
+
+    def test_detect_content_type(self):
+        """Test content type detection"""
+        # Test code detection
+        code_samples = [
+            "def test_function():",
+            "class TestClass:",
+            "import sys",
+            "function myFunc() {",
+        ]
+        for code in code_samples:
+            self.assertEqual(self.manager.detect_content_type(code), "code")
+
+        # Test URL detection
+        url_samples = [
+            "http://example.com",
+            "https://test.org",
+            "www.example.com",
+        ]
+        for url in url_samples:
+            self.assertEqual(self.manager.detect_content_type(url), "url")
+
+        # Test text detection
+        text_samples = [
+            "Regular text",
+            "123456",
+            "No special formatting",
+        ]
+        for text in text_samples:
+            self.assertEqual(self.manager.detect_content_type(text), "text")
+
+    def test_looks_like_code(self):
+        """Test code detection"""
+        self.assertTrue(self.manager.looks_like_code("def test():"))
+        self.assertTrue(self.manager.looks_like_code("class MyClass:"))
+        self.assertTrue(self.manager.looks_like_code("import os"))
+        self.assertFalse(self.manager.looks_like_code("regular text"))
+
+    def test_looks_like_url(self):
+        """Test URL detection"""
+        self.assertTrue(self.manager.looks_like_url("http://example.com"))
+        self.assertTrue(self.manager.looks_like_url("https://test.org"))
+        self.assertTrue(self.manager.looks_like_url("www.example.com"))
+        self.assertFalse(self.manager.looks_like_url("not a url"))
+
+    def test_process_code(self):
+        """Test code processing"""
+        input_code = "def test():\n    print('test')  \n\n"
+        expected = "def test():\n    print('test')\n"
+        self.assertEqual(self.manager.process_code(input_code), expected)
+
+    def test_process_text(self):
+        """Test text processing"""
+        input_text = "  test text  \n"
+        expected = "test text"
+        self.assertEqual(self.manager.process_text(input_text), expected)
+
+    def test_process_url(self):
+        """Test URL processing"""
+        input_url = "  https://example.com  \n"
+        expected = "https://example.com"
+        self.assertEqual(self.manager.process_url(input_url), expected)
+
+    @patch('pyperclip.paste')
+    def test_get_current_content(self, mock_paste):
+        """Test getting current clipboard content"""
+        # Test code content
+        mock_paste.return_value = "def test():\n    pass\n"
+        result = self.manager.get_current_content()
+        self.assertEqual(result, "def test():\n    pass\n")
+
+        # Test URL content
+        mock_paste.return_value = "https://example.com"
+        result = self.manager.get_current_content()
+        self.assertEqual(result, "https://example.com")
+
+        # Test text content
+        mock_paste.return_value = "regular text"
+        result = self.manager.get_current_content()
+        self.assertEqual(result, "regular text")
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
