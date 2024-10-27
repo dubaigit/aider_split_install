@@ -1961,57 +1961,57 @@ class WebSocketManager:
 
         aider_command.extend(self.args.filenames)
 
-    print("\nExecuting aider command:")
-    print(" ".join(aider_command))
+        print("\nExecuting aider command:")
+        print(" ".join(aider_command))
 
-    try:
-        # Verify aider is installed and accessible
         try:
-            subprocess.run(["aider", "--version"], capture_output=True, check=True)
-        except subprocess.CalledProcessError:
-            print("Error: Unable to run aider. Please ensure it's installed correctly")
-            print("Install with: pip install aider-chat")
+            # Verify aider is installed and accessible
+            try:
+                subprocess.run(["aider", "--version"], capture_output=True, check=True)
+            except subprocess.CalledProcessError:
+                print("Error: Unable to run aider. Please ensure it's installed correctly")
+                print("Install with: pip install aider-chat")
+                sys.exit(1)
+            except FileNotFoundError:
+                print("Error: aider command not found. Please install aider-chat")
+                print("Install with: pip install aider-chat")
+                sys.exit(1)
+
+            print("\nStarting aider process...")
+            process = subprocess.Popen(
+                aider_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
+                universal_newlines=True,
+                bufsize=1
+            )
+
+            print("Handling aider interaction...")
+            handle_aider_prompts(process)
+
+            print("Waiting for aider to complete...")
+            rc = process.wait()
+            if rc != 0:
+                raise subprocess.CalledProcessError(rc, aider_command)
+            print("Aider completed successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"Error executing aider command: {e}", file=sys.stderr)
+            print("The specified model may not be supported or there might be an issue with the aider configuration.")
+            print("Please check your aider installation and ensure the model is correctly specified.")
             sys.exit(1)
-        except FileNotFoundError:
-            print("Error: aider command not found. Please install aider-chat")
-            print("Install with: pip install aider-chat")
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user.")
             sys.exit(1)
-
-        print("\nStarting aider process...")
-        process = subprocess.Popen(
-            aider_command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE,
-            universal_newlines=True,
-            bufsize=1
-        )
-
-        print("Handling aider interaction...")
-        handle_aider_prompts(process)
-
-        print("Waiting for aider to complete...")
-        rc = process.wait()
-        if rc != 0:
-            raise subprocess.CalledProcessError(rc, aider_command)
-        print("Aider completed successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing aider command: {e}", file=sys.stderr)
-        print("The specified model may not be supported or there might be an issue with the aider configuration.")
-        print("Please check your aider installation and ensure the model is correctly specified.")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print("\nOperation cancelled by user.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
-        print("Please report this issue to the developers.")
-        sys.exit(1)
-    finally:
-        try:
-            os.unlink(temp_message_file.name)
-        except OSError:
-            pass
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}", file=sys.stderr)
+            print("Please report this issue to the developers.")
+            sys.exit(1)
+        finally:
+            try:
+                os.unlink(temp_message_file.name)
+            except OSError:
+                pass
 
 if __name__ == "__main__":
     main()
