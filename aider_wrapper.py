@@ -508,11 +508,16 @@ class AiderVoiceGUI:
                     text = event.get("delta", {}).get("text", "")
                     if text.strip():
                         self.update_transcription(text, is_assistant=True)
+                        # Ensure the response is also sent as audio
+                        if not self.response_active:
+                            self.response_active = True
+                            await self.send_audio_response(text)
                 
                 elif event_type == "input_speech_transcription_completed":
                     text = event.get("transcription", {}).get("text", "")
-                    self.update_transcription(text, is_assistant=False)
-                    await self.process_voice_command(text)
+                    if text.strip():  # Only process non-empty transcriptions
+                        self.update_transcription(text, is_assistant=False)
+                        await self.process_voice_command(text)
                 
                 elif event_type == "response.audio.delta":
                     try:
@@ -526,6 +531,9 @@ class AiderVoiceGUI:
                 elif event_type == "response.audio.done":
                     self.log_message("AI finished speaking")
                     self.response_active = False
+                    # Reset mic suppression after a short delay
+                    await asyncio.sleep(REENGAGE_DELAY_MS / 1000)
+                    self.mic_on_at = time.time()
                 
                 elif event_type == "response.done":
                     self.response_active = False
@@ -538,6 +546,8 @@ class AiderVoiceGUI:
                         self.log_message(f"⚠️ Response failed: {error.get('code', 'unknown error')}")
                     else:
                         self.log_message("Response completed")
+                        # Ensure mic is re-enabled
+                        self.mic_on_at = time.time()
                 
                 elif event_type == "error":
                     error_msg = event.get('error', {}).get('message', 'Unknown error')
@@ -547,23 +557,51 @@ class AiderVoiceGUI:
                     
             except websockets.exceptions.ConnectionClosed:
                 self.log_message("WebSocket connection closed")
-                break
+                # Attempt to reconnect
+                try:
+                    await self.connect_websocket()
+                except Exception as e:
+                    self.log_message(f"Failed to reconnect: {e}")
+                    break
             except Exception as e:
                 self.log_message(f"Error handling websocket message: {e}")
     
     async def process_voice_command(self, text):
-        """Process transcribed voice commands using function calling."""
+        """Process transcribed voice commands"""
         self.log_message(f"Processing command: {text}")
-
-        # Send the user's input to the assistant
+        
+        # Normalize text for easier command recognition
+        command = text.lower()
+        
+        # Create context for better command understanding
+        context = {
+            'files': list(self.interface_state['files'].keys()),
+            'has_issues': bool(self.interface_state['issues']),
+            'aider_running': bool(self.aider_process and self.aider_process.poll() is None),
+            'clipboard_available': bool(self.interface_state['clipboard_history'])
+        }
+        
+        # Send the command to the assistant with context
         await self.ws.send(json.dumps({
             "type": "conversation.item.create",
             "item": {
                 "type": "message",
                 "role": "user",
-                "content": [{"type": "text", "text": text}]
+                "content": [{
+                    "type": "text",
+                    "text": f"""Command: {text}
+                    Current Context:
+                    - Files loaded: {', '.join(context['files']) if context['files'] else 'None'}
+                    - Has issues: {'Yes' if context['has_issues'] else 'No'}
+                    - Aider running: {'Yes' if context['aider_running'] else 'No'}
+                    - Clipboard available: {'Yes' if context['clipboard_available'] else 'No'}
+                    """
+                }]
             }
         }))
+        
+        # Log the command processing
+        self.log_message("🎯 Command sent to assistant")
     
     def run_aider_with_clipboard(self):
         """Run Aider using clipboard content"""
