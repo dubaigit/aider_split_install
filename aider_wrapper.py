@@ -1017,8 +1017,22 @@ class AiderVoiceGUI:
         self.log_message(f"{prefix}{text}")
     
 def read_file_content(filename):
-    with open(filename, 'r') as file:
-        return file.read()
+    """Read file content with robust error handling"""
+    try:
+        with open(filename, 'r', encoding='utf-8') as file:
+            content = file.read()
+            if not content:
+                print(f"Warning: File {filename} is empty")
+            return content
+    except FileNotFoundError:
+        print(f"Error: File {filename} not found")
+        sys.exit(1)
+    except PermissionError:
+        print(f"Error: Permission denied accessing {filename}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error reading file {filename}: {e}")
+        sys.exit(1)
 
 def create_message_content(instructions, file_contents):
     existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
@@ -1187,19 +1201,36 @@ def enhance_user_experience():
 
 def get_clipboard_content():
     """
-    Get content directly from clipboard without waiting.
+    Get content from clipboard with enhanced error handling and validation
     """
     if pyperclip is None:
-        print("Error: Clipboard functionality is not available. Please install pyperclip.")
+        print("Error: Clipboard functionality requires pyperclip module")
+        print("Install it with: pip install pyperclip")
         sys.exit(1)
+        
     try:
         content = pyperclip.paste()
+        if not content:
+            print("Error: Clipboard is empty")
+            sys.exit(1)
+            
+        # Normalize line endings
         content = content.replace('\r\n', '\n').replace('\r', '\n')
+        
+        # Remove excessive newlines
         while '\n\n\n' in content:
             content = content.replace('\n\n\n', '\n\n')
-        return content.strip()
+            
+        content = content.strip()
+        print(f"Successfully read {len(content)} characters from clipboard")
+        return content
+        
+    except pyperclip.PyperclipException as e:
+        print(f"Clipboard error: {e}")
+        print("Make sure you have access to the system clipboard")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error accessing clipboard: {e}")
+        print(f"Unexpected error accessing clipboard: {e}")
         sys.exit(1)
 
 def handle_aider_prompts(process):
@@ -1320,6 +1351,19 @@ def main():
     print(" ".join(aider_command))
 
     try:
+        # Verify aider is installed and accessible
+        try:
+            subprocess.run(["aider", "--version"], capture_output=True, check=True)
+        except subprocess.CalledProcessError:
+            print("Error: Unable to run aider. Please ensure it's installed correctly")
+            print("Install with: pip install aider-chat")
+            sys.exit(1)
+        except FileNotFoundError:
+            print("Error: aider command not found. Please install aider-chat")
+            print("Install with: pip install aider-chat")
+            sys.exit(1)
+
+        print("\nStarting aider process...")
         process = subprocess.Popen(
             aider_command,
             stdout=subprocess.PIPE,
@@ -1329,11 +1373,14 @@ def main():
             bufsize=1
         )
 
+        print("Handling aider interaction...")
         handle_aider_prompts(process)
 
+        print("Waiting for aider to complete...")
         rc = process.wait()
         if rc != 0:
             raise subprocess.CalledProcessError(rc, aider_command)
+        print("Aider completed successfully")
     except subprocess.CalledProcessError as e:
         print(f"Error executing aider command: {e}", file=sys.stderr)
         print("The specified model may not be supported or there might be an issue with the aider configuration.")
