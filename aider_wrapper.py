@@ -891,6 +891,7 @@ class AiderVoiceGUI:
             return
             
         try:
+            self.log_message("🗣️ Sending voice response: " + text)
             await self.ws.send(json.dumps({
                 "type": "conversation.item.create",
                 "item": {
