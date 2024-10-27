@@ -18,6 +18,26 @@ from aider_wrapper import (
     ClipboardManager,
 )
 
+import unittest
+import asyncio
+import tkinter as tk
+from unittest.mock import MagicMock, patch
+import sys
+import json
+import time
+from queue import Queue
+import websockets
+import pyaudio
+from aider_wrapper import (
+    AiderVoiceGUI,
+    AudioBufferManager,
+    AudioProcessingError,
+    PerformanceMonitor,
+    WebSocketManager,
+    VoiceCommandProcessor,
+    ClipboardManager,
+)
+
 class AsyncMock(MagicMock):
     """Mock class that supports async methods and special method handling"""
     def __init__(self, *args, **kwargs):
@@ -46,7 +66,12 @@ class AsyncMock(MagicMock):
         raise StopAsyncIteration
 
 # Test fixtures and utilities
-@pytest.fixture
+@classmethod
+def setUpClass(cls):
+    """Set up shared test fixtures"""
+    cls.mock_args = cls.create_mock_args()
+    
+@staticmethod
 def mock_args():
     """Fixture for mocked command line arguments"""
     args = MagicMock()
@@ -60,8 +85,8 @@ def mock_args():
     args.auto = False
     return args
 
-@pytest.fixture
-def gui_app(mock_args):
+@classmethod
+def create_gui_app(cls, mock_args):
     """Fixture for GUI application instance"""
     with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
         root = tk.Tk()
@@ -271,8 +296,8 @@ class TestAiderVoiceGUI(unittest.TestCase):
             loop.close()
             asyncio.set_event_loop(None)
 
-@pytest.fixture
-def buffer_manager():
+@classmethod
+def create_buffer_manager(cls):
     """Fixture for AudioBufferManager instance"""
     return AudioBufferManager(
         max_size=1024,
@@ -351,8 +376,8 @@ class TestAudioBufferManager(unittest.TestCase):
             self.buffer_manager.combine_chunks(test_chunks)
         self.assertEqual(self.buffer_manager.stats["drops"], 1)
 
-@pytest.fixture
-def performance_monitor():
+@classmethod
+def create_performance_monitor(cls):
     """Fixture for PerformanceMonitor instance"""
     metrics = ["cpu", "memory", "latency"]
     return PerformanceMonitor(metrics)
