@@ -1281,6 +1281,49 @@ class AiderVoiceGUI:
             self.log_message(f"Unexpected error reading {filename}: {e}")
             return None
 
+    def __del__(self) -> None:
+        """Cleanup resources when object is deleted."""
+        try:
+            # Stop and close audio streams
+            if hasattr(self, 'mic_stream'):
+                try:
+                    self.mic_stream.stop_stream()
+                    self.mic_stream.close()
+                except Exception as e:
+                    self.log_message(f"Error closing mic stream: {e}")
+                    
+            if hasattr(self, 'spkr_stream'):
+                try:
+                    self.spkr_stream.stop_stream()
+                    self.spkr_stream.close()
+                except Exception as e:
+                    self.log_message(f"Error closing speaker stream: {e}")
+            
+            # Terminate PyAudio
+            if hasattr(self, 'p'):
+                try:
+                    self.p.terminate()
+                except Exception as e:
+                    self.log_message(f"Error terminating PyAudio: {e}")
+            
+            # Close websocket
+            if hasattr(self, 'ws') and self.ws:
+                try:
+                    asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
+                except Exception as e:
+                    self.log_message(f"Error closing websocket: {e}")
+                    
+            # Clean up temp files
+            for temp_file in getattr(self, 'temp_files', []):
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except Exception as e:
+                    self.log_message(f"Error removing temp file {temp_file}: {e}")
+                    
+        except Exception as e:
+            self.log_message(f"Error during cleanup: {e}")
+
 
     def summarize_aider_session(self):
         """Summarize the completed Aider session results."""
@@ -1729,45 +1772,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    def __del__(self) -> None:
-        """Cleanup resources when object is deleted."""
-        try:
-            # Stop and close audio streams
-            if hasattr(self, 'mic_stream'):
-                try:
-                    self.mic_stream.stop_stream()
-                    self.mic_stream.close()
-                except Exception as e:
-                    print(f"Error closing mic stream: {e}")
-                    
-            if hasattr(self, 'spkr_stream'):
-                try:
-                    self.spkr_stream.stop_stream()
-                    self.spkr_stream.close()
-                except Exception as e:
-                    print(f"Error closing speaker stream: {e}")
-            
-            # Terminate PyAudio
-            if hasattr(self, 'p'):
-                try:
-                    self.p.terminate()
-                except Exception as e:
-                    print(f"Error terminating PyAudio: {e}")
-            
-            # Close websocket
-            if hasattr(self, 'ws') and self.ws:
-                try:
-                    asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
-                except Exception as e:
-                    print(f"Error closing websocket: {e}")
-                    
-            # Clean up temp files
-            for temp_file in getattr(self, 'temp_files', []):
-                try:
-                    if os.path.exists(temp_file):
-                        os.unlink(temp_file)
-                except Exception as e:
-                    print(f"Error removing temp file {temp_file}: {e}")
-                    
-        except Exception as e:
-            print(f"Error during cleanup: {e}")
