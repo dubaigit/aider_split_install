@@ -644,25 +644,43 @@ class TestAudioProcessing(unittest.TestCase):
     def test_audio_buffer_overflow(self):
         """Test audio buffer overflow handling"""
         async def run_test():
-            # Fill buffer to max size
-            max_size = 1024 * 1024  # 1MB
-            overflow_data = b'\x01\x00' * (max_size + 1000)  # Exceed max size
-            
-            # Test speaker output with overflow
-            self.app.audio_buffer = bytearray(overflow_data)
-            result = await self.app.handle_speaker_output(
-                None,
-                self.chunk_size,
-                {},
-                0
+            # Create buffer manager with small max size for testing
+            buffer_manager = AudioBufferManager(
+                max_size=1024,  # 1KB max buffer
+                chunk_size=256,
+                sample_rate=24000
             )
             
-            # Verify chunk size is correct
-            self.assertEqual(len(result[0]), self.chunk_size * 2)
-            self.assertEqual(result[1], pyaudio.paContinue)
+            # Create test data larger than buffer
+            test_data = b"\x00" * 2048  # 2KB of data
             
-            # Verify remaining buffer size is within limits
-            self.assertLess(len(self.app.audio_buffer), max_size)
+            # Split into chunks
+            chunks = [test_data[i:i+256] for i in range(0, len(test_data), 256)]
+            
+            # Create queue and add chunks
+            test_queue = Queue()
+            for chunk in chunks:
+                test_queue.put(chunk)
+            
+            # Get chunks with overflow protection
+            received_chunks = buffer_manager.get_chunks(test_queue)
+            
+            # Verify overflow was handled
+            self.assertTrue(len(received_chunks) < len(chunks))
+            self.assertEqual(buffer_manager.stats["overflows"], 1)
+            
+            # Verify buffer usage
+            combined_data = buffer_manager.combine_chunks(received_chunks)
+            self.assertLessEqual(len(combined_data), buffer_manager.max_size)
+
+            # Run the test
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(run_test())
+            finally:
+                loop.close()
+                asyncio.set_event_loop(None)
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
