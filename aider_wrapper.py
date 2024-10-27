@@ -161,6 +161,22 @@ class AiderVoiceGUI:
         self.root = root
         self.root.title("Aider Voice Assistant")
         
+        # Core state
+        self.interface_state = {
+            'files': {},
+            'issues': [],
+            'aider_output': [],
+            'clipboard_history': [],
+            'last_analysis': None,
+            'command_history': []
+        }
+        
+        # Initialize managers
+        self.clipboard_manager = ClipboardManager(self)
+        self.result_processor = ResultProcessor(self)
+        self.error_processor = ErrorProcessor(self)
+        self.ws_manager = WebSocketManager(self)
+        
         # Core attributes
         self.response_active = False
         self.last_transcript_id = None
@@ -1534,6 +1550,8 @@ class ClipboardManager:
         self.update_interval = 0.5  # seconds
         self.max_content_size = 1024 * 1024  # 1MB
         self.history = []
+        self.interface_state = parent.interface_state
+        self.log_message = parent.log_message
         self.processors = {
             "code": self.process_code,
             "text": self.process_text,
@@ -1703,6 +1721,8 @@ class ResultProcessor:
         self.processing = False
         self.last_process_time = 0
         self.process_cooldown = 1.0  # seconds
+        self.interface_state = parent.interface_state
+        self.log_message = parent.log_message
         
         # Result handlers with proper typing
         self.result_handlers = {
@@ -2171,6 +2191,8 @@ class ErrorProcessor:
     def __init__(self, parent):
         self.parent = parent
         self.fix_attempts = {}
+        self.client = OpenAI()
+        self.log_message = parent.log_message
         
     async def handle_error(self, error_type, error):
         """Handle errors with context and automated fixing"""
@@ -2245,6 +2267,8 @@ class WebSocketManager:
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 5
         self.monitoring_task = None
+        self.log_message = parent.log_message
+        self.ws = parent.ws
         
     async def start_monitoring(self):
         """Start connection monitoring"""
