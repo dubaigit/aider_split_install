@@ -269,6 +269,35 @@ class TestPerformanceMonitor(unittest.TestCase):
         metrics = self.monitor.get_metrics()
         self.assertEqual(metrics["cpu"], 55)
 
+class TestVoiceCommandProcessor(unittest.TestCase):
+    def setUp(self):
+        """Set up test environment"""
+        self.parent = MagicMock()
+        self.processor = VoiceCommandProcessor(self.parent)
+
+    def test_init(self):
+        """Test initialization"""
+        self.assertIsInstance(self.processor.commands, list)
+        self.assertEqual(len(self.processor.commands), 0)
+
+    def test_preprocess_command(self):
+        """Test command preprocessing"""
+        # Test stripping whitespace
+        self.assertEqual(self.processor.preprocess_command("  test  "), "test")
+        # Test converting to lowercase
+        self.assertEqual(self.processor.preprocess_command("TEST"), "test")
+        # Test combined effects
+        self.assertEqual(self.processor.preprocess_command("  TEST  "), "test")
+
+    def test_validate_command(self):
+        """Test command validation"""
+        # Test empty command
+        self.assertFalse(self.processor.validate_command(""))
+        self.assertFalse(self.processor.validate_command("   "))
+        # Test valid command
+        self.assertTrue(self.processor.validate_command("test command"))
+
+
 class TestWebSocketManager(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
