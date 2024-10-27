@@ -3,9 +3,11 @@ import asyncio
 import tkinter as tk
 from unittest.mock import MagicMock, patch
 import sys
+from queue import Queue
 from aider_wrapper import (
     AiderVoiceGUI,
     AudioBufferManager,
+    AudioProcessingError,
     PerformanceMonitor,
     WebSocketManager,
     VoiceCommandProcessor,
