@@ -424,10 +424,14 @@ class AiderVoiceGUI:
             
             # Initialize session with correct configuration
             await self.ws.send(json.dumps({
-                "type": "session.update",
+                "type": "session.create",
                 "session": {
                     "model": "gpt-4o",
                     "voice": "alloy",
+                    "response_format": {
+                        "type": "text_and_audio",
+                        "voice": "alloy"
+                    },
                     "turn_detection": {
                         "type": "server_vad",
                         "threshold": 0.5,
@@ -573,14 +577,14 @@ class AiderVoiceGUI:
         
         # Send the command to the assistant
         await self.ws.send(json.dumps({
-            "type": "conversation.item.create",
-            "item": {
-                "type": "message",
+            "type": "message.create",
+            "message": {
                 "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": text
-                }]
+                "content": text,
+                "response_format": {
+                    "type": "text_and_audio",
+                    "voice": "alloy"
+                }
             }
         }))
         
