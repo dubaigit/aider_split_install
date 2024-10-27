@@ -1539,7 +1539,7 @@ class ClipboardManager:
         # Also update the log
         self.log_message(f"{prefix}{text}")
 
-    def read_file_content(self, filename: str) -> str | None:
+    def read_file_content(self, filename: str) -> str:
         """Read file content with robust error handling.
         
         Args:
@@ -2057,9 +2057,12 @@ class VoiceCommandProcessor:
             return False
         return True
         
-    async def process_voice_command(self):
+    async def process_voice_command(self, command: str) -> bool:
         """Process voice commands using OpenAI's real-time API"""
         try:
+            if not self.audio_stream:
+                return False
+                
             stream = await self.client.audio.streaming(
                 model="whisper-1",
                 input=self.audio_stream,
@@ -2068,9 +2071,9 @@ class VoiceCommandProcessor:
             return await self._handle_streaming_response(stream)
         except Exception as e:
             await self.error_processor.handle_error("Voice processing error", e)
-            return None
+            return False
             
-    async def _handle_streaming_response(self, stream):
+    async def _handle_streaming_response(self, stream) -> bool:
         """Handle streaming response from OpenAI API"""
         try:
             async for chunk in stream:
@@ -2221,8 +2224,10 @@ class WebSocketManager:
                 print("Warning: Not a git repository. Skipping git commit.")
             except Exception as e:
                 print(f"Error creating git commit: {e}")
+            return True
         else:
             print("Warning: Git functionality is disabled. Skipping git commit.")
+            return False
 
         # Get instructions content from parsed arguments
         instructions = ""
