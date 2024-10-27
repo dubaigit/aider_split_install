@@ -53,6 +53,9 @@ class AiderVoiceGUI:
         self.root = tk_root
         self.root.title("Aider Voice Assistant")
         self.root.geometry("800x600")
+        self.setup_gui()
+        
+    def setup_gui(self):
 def read_file_content(filename):
     with open(filename, 'r') as file:
         return file.read()
