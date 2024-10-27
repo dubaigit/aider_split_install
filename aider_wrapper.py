@@ -139,7 +139,7 @@ def handle_aider_prompts(process):
                 process.stdin.flush()
 
 class VoiceAssistant:
-    def __init__(self):
+    def __init__(self, tk_root):
         self.client = OpenAI()       
         self.recording = False
         self.auto_mode = False
@@ -147,9 +147,10 @@ class VoiceAssistant:
         self.ws = None
         self.running = True
         self.client = OpenAI()
+        self.root = tk_root
         
         # Create main frame
-        self.main_frame = ttk.Frame(root, padding="10")
+        self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Create output text area
@@ -811,7 +812,8 @@ def main():
     args = parser.parse_args()
 
     if args.voice_only:
-        assistant = VoiceAssistant()
+        root = tk.Tk()
+        assistant = VoiceAssistant(root)
         asyncio.run(assistant.start_voice_interaction())
         return
 
