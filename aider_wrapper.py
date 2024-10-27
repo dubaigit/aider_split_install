@@ -7,22 +7,45 @@ import select
 import re
 import shutil
 import time
-import tkinter as tk
-from tkinter import ttk, scrolledtext
-import sounddevice as sd
-import numpy as np
-import websockets
-import asyncio
-import json
 import queue
-import threading
-from openai import OpenAI
-import pyperclip
-import wave
+import json
 import base64
+import asyncio
+import threading
+import tkinter as tk
+from tkinter import ttk, scrolledtext, filedialog  # Added filedialog import
+import pyaudio
 
-git = None
-pyperclip = None
+# Optional imports with fallbacks
+try:
+    import sounddevice as sd
+except ImportError:
+    print("Warning: sounddevice module not found. Voice functionality will be disabled.")
+    sd = None
+
+try:
+    import numpy as np
+except ImportError:
+    print("Warning: numpy module not found. Voice functionality will be disabled.")
+    np = None
+
+try:
+    import websockets
+except ImportError:
+    print("Warning: websockets module not found. Voice functionality will be disabled.")
+    websockets = None
+
+try:
+    from openai import OpenAI
+except ImportError:
+    print("Warning: openai module not found. Voice functionality will be disabled.")
+    OpenAI = None
+
+try:
+    import pyperclip
+except ImportError:
+    print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
+    pyperclip = None
 
 try:
     from tqdm import tqdm
@@ -36,172 +59,151 @@ except ImportError:
     print("Warning: git module not found. Git functionality will be disabled.")
     git = None
 
-try:
-    import pyperclip
-except ImportError:
-    print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
-    pyperclip = None
-
 # Audio settings
-SAMPLE_RATE = 24000  # Changed to 24kHz as per OpenAI docs
+CHUNK_SIZE = 1024  # Smaller chunks for more responsive audio
+SAMPLE_RATE = 24000
 CHANNELS = 1
-CHUNK_SIZE = 1024
-OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
+FORMAT = pyaudio.paInt16
+REENGAGE_DELAY_MS = 500
+OPENAI_WEBSOCKET_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
 
 class AiderVoiceGUI:
-    def __init__(self, tk_root):
-        self.root = tk_root
+    def __init__(self, root):
+        self.root = root
         self.root.title("Aider Voice Assistant")
-        self.root.geometry("800x600")
-        self.setup_gui()
+        self.root.geometry("1200x800")
         
-    def toggle_voice_control(self):
-        """Toggle voice control on/off"""
-        if not hasattr(self, 'recording') or not self.recording:
-            self.start_voice_control()
-        else:
-            self.stop_voice_control()
-            
-    def start_voice_control(self):
-        """Start voice control"""
-        self.recording = True
-        self.voice_button.configure(text="🔴 Stop Voice Control")
-        self.status_label.configure(text="Listening...")
-        self.assistant = VoiceAssistant(self.root)
-        
-    def stop_voice_control(self):
-        """Stop voice control"""
-        self.recording = False
-        self.voice_button.configure(text="🎤 Start Voice Control")
-        self.status_label.configure(text="Ready")
-        if hasattr(self, 'assistant'):
-            self.assistant.stop_voice_control()
-            
-    def setup_gui(self):
-        # Create main frame
-        self.main_frame = ttk.Frame(self.root, padding="10")
+        # Create main frame with padding
+        self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Create output text area
-        self.output_text = scrolledtext.ScrolledText(self.main_frame, height=20)
-        self.output_text.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Create left panel for controls and input
+        self.left_panel = ttk.Frame(self.main_frame)
+        self.left_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
         
-        # Create voice control button
+        # Control buttons frame
+        self.control_frame = ttk.LabelFrame(self.left_panel, text="Controls", padding="5")
+        self.control_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
+        
+        # Voice control button
         self.voice_button = ttk.Button(
-            self.main_frame,
+            self.control_frame,
             text="🎤 Start Voice Control",
             command=self.toggle_voice_control
         )
-        self.voice_button.grid(row=1, column=0, pady=10)
+        self.voice_button.grid(row=0, column=0, pady=5, padx=5, sticky='ew')
         
-        # Create status label
-        self.status_label = ttk.Label(self.main_frame, text="Ready")
-        self.status_label.grid(row=1, column=1, pady=10)
+        # Status label
+        self.status_label = ttk.Label(self.control_frame, text="Ready")
+        self.status_label.grid(row=0, column=1, pady=5, padx=5)
+        
+        # Action buttons
+        self.add_files_button = ttk.Button(
+            self.control_frame,
+            text="📁 Add Files",
+            command=self.browse_files
+        )
+        self.add_files_button.grid(row=1, column=0, pady=5, padx=5, sticky='ew')
+        
+        self.check_issues_button = ttk.Button(
+            self.control_frame,
+            text="🔍 Check Issues",
+            command=self.check_all_issues
+        )
+        self.check_issues_button.grid(row=1, column=1, pady=5, padx=5, sticky='ew')
+        
+        # Input frame
+        self.input_frame = ttk.LabelFrame(self.left_panel, text="Input/Clipboard", padding="5")
+        self.input_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.input_text = scrolledtext.ScrolledText(self.input_frame, height=10)
+        self.input_text.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        self.clipboard_button = ttk.Button(
+            self.input_frame,
+            text="📋 Load Clipboard",
+            command=self.use_clipboard_content
+        )
+        self.clipboard_button.grid(row=1, column=0, pady=5, padx=5)
+        
+        self.send_button = ttk.Button(
+            self.input_frame,
+            text="📤 Send to Assistant",
+            command=self.send_input_text
+        )
+        self.send_button.grid(row=1, column=1, pady=5, padx=5)
+        
+        # Create right panel for output
+        self.right_panel = ttk.Frame(self.main_frame)
+        self.right_panel.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        
+        # Transcription frame
+        self.transcription_frame = ttk.LabelFrame(self.right_panel, text="Conversation", padding="5")
+        self.transcription_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.transcription_text = scrolledtext.ScrolledText(self.transcription_frame, height=15)
+        self.transcription_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Issues frame
+        self.issues_frame = ttk.LabelFrame(self.right_panel, text="Issues", padding="5")
+        self.issues_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.issues_text = scrolledtext.ScrolledText(self.issues_frame, height=15)
+        self.issues_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create log frame
+        self.log_frame = ttk.LabelFrame(self.left_panel, text="Log", padding="5")
+        self.log_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        # Create output text area (for logging)
+        self.output_text = scrolledtext.ScrolledText(self.log_frame, height=10)
+        self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.columnconfigure(1, weight=1)
+        self.main_frame.columnconfigure(1, weight=2)  # Right panel takes more space
         self.main_frame.rowconfigure(0, weight=1)
-
-def create_message_content(instructions, file_contents):
-    existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
-    prompt = '''
-    [Previous prompt content remains unchanged...]
-    '''
-    content = f"{prompt}\n\n<problem_description>\n{instructions}\n</problem_description>"
-    return content
-
-def enhance_user_experience():
-    """
-    Enhance user experience with a progress bar and better error handling.
-    """
-    if tqdm is None:
-        return
-
-    for i in tqdm(range(10), desc="Preparing environment"):
-        time.sleep(0.1)
-
-def get_clipboard_content():
-    """
-    Get content directly from clipboard without waiting.
-    """
-    if pyperclip is None:
-        print("Error: Clipboard functionality is not available.")
-        sys.exit(1)
-    try:
-        content = pyperclip.paste()
-        content = content.replace('\r\n', '\n').replace('\r', '\n')
-        while '\n\n\n' in content:
-            content = content.replace('\n\n\n', '\n\n')
-        return content.strip()
-    except Exception as e:
-        print(f"Error accessing clipboard: {e}")
-        sys.exit(1)
-
-def handle_aider_prompts(process):
-    while True:
-        ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
-        for stream in ready:
-            line = stream.readline()
-            if not line:
-                sys.exit(0)
-
-            print(line, end='', flush=True)
-
-            if re.search(r'Add .+ to the chat\? \(Y\)es/\(N\)o \[Yes\]:', line):
-                process.stdin.write('Y\n')
-                process.stdin.flush()
-            elif 'Add URL to the chat? (Y)es/(N)o/(A)ll/(S)kip all [Yes]:' in line:
-                process.stdin.write('S\n')
-                process.stdin.flush()
-            elif 'Add URL to the chat? (Y)es/(N)o [Yes]:' in line:
-                process.stdin.write('N\n')
-                process.stdin.flush()
-
-class VoiceAssistant:
-    def __init__(self, tk_root):
-        self.client = OpenAI()       
+        self.left_panel.columnconfigure(0, weight=1)
+        self.left_panel.rowconfigure(2, weight=1)  # Log frame takes remaining space
+        self.right_panel.columnconfigure(0, weight=1)
+        self.right_panel.rowconfigure(0, weight=1)
+        self.right_panel.rowconfigure(1, weight=1)
+        
+        # Initialize other attributes
         self.recording = False
         self.auto_mode = False
         self.audio_queue = queue.Queue()
         self.ws = None
         self.running = True
         self.client = OpenAI()
-        self.root = tk_root
+        self.aider_process = None
+        self.temp_files = []
+        self.fixing_issues = False
         
-        # Create main frame
-        self.main_frame = ttk.Frame(self.root, padding="10")
-        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Create output text area
-        self.output_text = scrolledtext.ScrolledText(self.main_frame, height=20)
-        self.output_text.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Create voice control button
-        self.voice_button = ttk.Button(
-            self.main_frame,
-            text="🎤 Start Voice Control",
-            command=self.toggle_voice_control
-        )
-        self.voice_button.grid(row=1, column=0, pady=10)
-        
-        # Create status label
-        self.status_label = ttk.Label(self.main_frame, text="Ready")
-        self.status_label.grid(row=1, column=1, pady=10)
-        
-        # Configure grid weights
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.columnconfigure(1, weight=1)
-        self.main_frame.rowconfigure(0, weight=1)
-        
-        # Start asyncio event loop in a separate thread
+        # Initialize asyncio loop
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
         self.thread.start()
+        
+        # Initialize audio components
+        self.p = pyaudio.PyAudio()
+        self.audio_buffer = bytearray()  # Changed from bytes to bytearray
+        self.mic_queue = queue.Queue()
+        self.mic_on_at = 0
+        self.mic_active = None
+        self._stop_event = threading.Event()
+        
+        # Add performance settings
+        self.log_frequency = 50  # Only log every 50th audio chunk
+        self.log_counter = 0
+        self.chunk_buffer = []  # Buffer for accumulating audio chunks
+        self.chunk_buffer_size = 5  # Number of chunks to accumulate before sending
+        
+        # Initialize audio processing thread
+        self.audio_thread = None
+        
+        # Rest of initialization...
 
     def run_async_loop(self):
         """Run asyncio event loop in a separate thread"""
@@ -217,18 +219,38 @@ class VoiceAssistant:
 
     def start_voice_control(self):
         """Start voice control"""
+        if None in (sd, np, websockets, OpenAI):
+            self.log_message("Error: Required modules for voice control are not available")
+            return
+            
         self.recording = True
         self.voice_button.configure(text="🔴 Stop Voice Control")
         self.status_label.configure(text="Listening...")
         
-        # Start audio stream
-        self.stream = sd.InputStream(
+        # Start audio streams
+        self.mic_stream = self.p.open(
+            format=FORMAT,
             channels=CHANNELS,
-            samplerate=SAMPLE_RATE,
-            callback=self.audio_callback,
-            blocksize=CHUNK_SIZE
+            rate=SAMPLE_RATE,
+            input=True,
+            stream_callback=self._mic_callback,
+            frames_per_buffer=CHUNK_SIZE
         )
-        self.stream.start()
+        self.spkr_stream = self.p.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=SAMPLE_RATE,
+            output=True,
+            stream_callback=self._spkr_callback,
+            frames_per_buffer=CHUNK_SIZE
+        )
+        
+        # Start audio processing thread
+        self.audio_thread = threading.Thread(target=self._process_audio_thread, daemon=True)
+        self.audio_thread.start()
+        
+        self.mic_stream.start_stream()
+        self.spkr_stream.start_stream()
         
         # Connect to OpenAI WebSocket
         asyncio.run_coroutine_threadsafe(self.connect_websocket(), self.loop)
@@ -239,45 +261,109 @@ class VoiceAssistant:
         self.voice_button.configure(text="🎤 Start Voice Control")
         self.status_label.configure(text="Ready")
         
-        if hasattr(self, 'stream'):
-            self.stream.stop()
-            self.stream.close()
+        # Stop audio streams
+        if hasattr(self, 'mic_stream'):
+            self.mic_stream.stop_stream()
+            self.mic_stream.close()
+        if hasattr(self, 'spkr_stream'):
+            self.spkr_stream.stop_stream()
+            self.spkr_stream.close()
         
         # Close WebSocket connection
         if self.ws:
             asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
             self.ws = None
+        
+        # Terminate PyAudio
+        self.p.terminate()
 
-    def audio_callback(self, indata, frames, time, status):
-        """Callback for audio input"""
-        if status:
-            self.log_message(f"Audio input error: {status}")
-            return
-        if self.recording:
-            # Convert to 16-bit PCM
-            audio_data = (indata * 32767).astype(np.int16)
-            self.audio_queue.put(audio_data.tobytes())
+    def _mic_callback(self, in_data, frame_count, time_info, status):
+        """Microphone callback that queues audio chunks."""
+        if time.time() > self.mic_on_at:
+            if not self.mic_active:
+                self.log_message('🎙️🟢 Mic active')
+                self.mic_active = True
+            self.mic_queue.put(in_data)
+            
+            # Only log occasionally to reduce GUI updates
+            self.log_counter += 1
+            if self.log_counter % self.log_frequency == 0:
+                self.log_message(f'🎤 Processing audio...')
+        else:
+            if self.mic_active:
+                self.log_message('🎙️🔴 Mic suppressed')
+                self.mic_active = False
+        return (None, pyaudio.paContinue)
+
+    def _process_audio_thread(self):
+        """Process audio in a separate thread"""
+        while self.recording:
+            try:
+                # Accumulate chunks
+                chunks = []
+                while len(chunks) < self.chunk_buffer_size:
+                    try:
+                        chunk = self.mic_queue.get_nowait()
+                        chunks.append(chunk)
+                    except queue.Empty:
+                        break
+                
+                if chunks and self.ws:
+                    # Combine chunks and send
+                    combined_chunk = b''.join(chunks)
+                    asyncio.run_coroutine_threadsafe(
+                        self.ws.send(json.dumps({
+                            'type': 'input_audio_buffer.append',
+                            'audio': base64.b64encode(combined_chunk).decode('utf-8')
+                        })),
+                        self.loop
+                    )
+            except Exception as e:
+                self.log_message(f"Error in audio processing thread: {e}")
+            
+            time.sleep(0.01)  # Short sleep to prevent tight loop
+
+    def _spkr_callback(self, in_data, frame_count, time_info, status):
+        """Speaker callback that plays audio."""
+        bytes_needed = frame_count * 2
+        current_buffer_size = len(self.audio_buffer)
+
+        if current_buffer_size >= bytes_needed:
+            audio_chunk = bytes(self.audio_buffer[:bytes_needed])
+            self.audio_buffer = bytearray(self.audio_buffer[bytes_needed:])  # Convert slice to bytearray
+            self.mic_on_at = time.time() + REENGAGE_DELAY_MS / 1000
+        else:
+            audio_chunk = bytes(self.audio_buffer) + b'\x00' * (bytes_needed - current_buffer_size)
+            self.audio_buffer = bytearray()  # Reset with empty bytearray
+
+        return (audio_chunk, pyaudio.paContinue)
 
     async def connect_websocket(self):
         """Connect to OpenAI's realtime websocket API"""
         try:
             self.ws = await websockets.connect(
-                f"{OPENAI_WEBSOCKET_URL}?model=gpt-4o-realtime-preview-2024-10-01",
+                OPENAI_WEBSOCKET_URL,
                 extra_headers={
                     "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                    "Content-Type": "application/json",
                     "OpenAI-Beta": "realtime=v1"
                 }
             )
             
-            # Initialize session
+            # Initialize session with correct configuration
             await self.ws.send(json.dumps({
                 "type": "session.update",
                 "session": {
-                    "input_audio_transcription": {
-                        "language": "en",
-                        "model": "whisper-1"
-                    },
+                    "model": "gpt-4o",
                     "voice": "alloy",
+                    "turn_detection": {
+                        "type": "server_vad",  # Required parameter
+                        "threshold": 0.5,
+                        "prefix_padding_ms": 200,
+                        "silence_duration_ms": 300
+                    },
+                    "temperature": 0.8,
+                    "max_response_output_tokens": 2048,
                     "instructions": """
                     You are an AI assistant that helps control the aider code assistant through voice commands.
                     Commands you understand:
@@ -287,11 +373,19 @@ class VoiceAssistant:
                     - Summarize what happened when aider finishes
                     
                     Always confirm what action you're taking and provide clear feedback.
+                    Your knowledge cutoff is 2023-10. Be helpful, witty, and friendly.
+                    Talk quickly and be engaging with a lively tone.
                     """
                 }
             }))
             
             self.log_message("Connected to OpenAI realtime API")
+            
+            # Initialize response state
+            self.response_active = False
+            self.last_transcript_id = None
+            self.audio_buffer = bytearray()  # Changed from bytes to bytearray
+            self.last_audio_time = time.time()
             
             # Start message handling
             asyncio.create_task(self.handle_websocket_messages())
@@ -301,6 +395,24 @@ class VoiceAssistant:
             self.log_message(f"Failed to connect to OpenAI: {e}")
             self.stop_voice_control()
 
+    async def process_audio_queue(self):
+        """Process audio queue and send to OpenAI"""
+        while self.recording:
+            if not self.mic_queue.empty():
+                mic_chunk = self.mic_queue.get()
+                self.log_message(f'🎤 Processing {len(mic_chunk)} bytes of audio data.')
+                
+                try:
+                    # Send audio data to OpenAI
+                    await self.ws.send(json.dumps({
+                        'type': 'input_audio_buffer.append',
+                        'audio': base64.b64encode(mic_chunk).decode('utf-8')
+                    }))
+                except Exception as e:
+                    self.log_message(f"Error sending audio data: {e}")
+            
+            await asyncio.sleep(0.05)
+
     async def handle_websocket_messages(self):
         """Handle incoming websocket messages"""
         while self.ws and self.recording:
@@ -308,38 +420,55 @@ class VoiceAssistant:
                 message = await self.ws.recv()
                 event = json.loads(message)
                 
-                if event["type"] == "conversation.item.input_audio_transcription.completed":
-                    text = event["transcription"]["text"]
-                    self.log_message(f"You said: {text}")
+                event_type = event.get("type")
+                
+                if event_type == "response.text.delta":
+                    text = event.get("delta", {}).get("text", "")
+                    if text.strip():
+                        self.update_transcription(text, is_assistant=True)
+                
+                elif event_type == "input_speech_transcription_completed":
+                    text = event.get("transcription", {}).get("text", "")
+                    self.update_transcription(text, is_assistant=False)
                     await self.process_voice_command(text)
+                
+                elif event_type == "response.audio.delta":
+                    try:
+                        audio_content = base64.b64decode(event.get('delta', ''))
+                        if audio_content:
+                            self.audio_buffer.extend(audio_content)
+                            self.log_message(f'Received {len(audio_content)} bytes of audio data')
+                    except Exception as e:
+                        self.log_message(f"Error processing audio response: {e}")
+                
+                elif event_type == "response.audio.done":
+                    self.log_message("AI finished speaking")
+                    self.response_active = False
                     
-                elif event["type"] == "error":
-                    self.log_message(f"Error from OpenAI: {event['error']['message']}")
-                    
+                elif event_type == "response.done":
+                    self.response_active = False
+                    status = event.get("status")
+                    if status == "incomplete":
+                        reason = event.get("status_details", {}).get("reason", "unknown")
+                        self.log_message(f"🚫 Response incomplete: {reason}")
+                    elif status == "failed":
+                        error = event.get("status_details", {}).get("error", {})
+                        self.log_message(f"⚠️ Response failed: {error.get('code', 'unknown error')}")
+                    else:
+                        self.log_message("Response completed")
+                
+                elif event_type == "error":
+                    error_msg = event.get('error', {}).get('message', 'Unknown error')
+                    self.log_message(f"Error from OpenAI: {error_msg}")
+                    if "active response" in error_msg.lower():
+                        self.response_active = True
+                
             except websockets.exceptions.ConnectionClosed:
                 self.log_message("WebSocket connection closed")
                 break
             except Exception as e:
                 self.log_message(f"Error handling websocket message: {e}")
-
-    async def process_audio_queue(self):
-        """Process audio queue and send to OpenAI"""
-        while self.recording:
-            if not self.audio_queue.empty():
-                audio_data = b''
-                while not self.audio_queue.empty():
-                    audio_data += self.audio_queue.get()
-                
-                if self.ws:
-                    try:
-                        await self.ws.send(json.dumps({
-                            "type": "input_audio_buffer.append",
-                            "audio": base64.b64encode(audio_data).decode()
-                        }))
-                    except Exception as e:
-                        self.log_message(f"Error sending audio data: {e}")
-            
-            await asyncio.sleep(0.1)
+                self.log_message(f"Event content: {json.dumps(event, indent=2)}")
 
     async def process_voice_command(self, text):
         """Process transcribed voice commands"""
@@ -347,25 +476,11 @@ class VoiceAssistant:
         
         if "run aider" in text.lower() and "clipboard" in text.lower():
             self.log_message("Running aider with clipboard content...")
-            subprocess.Popen(
-                ["python", "aider_wrapper.py", "-c"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            await self.send_audio_response("Started aider with clipboard content")
+            self.run_aider_with_clipboard()
             
         elif "add files" in text.lower():
             self.log_message("Adding files to aider...")
-            files = [f for f in os.listdir('.') if f.endswith(('.py', '.js', '.html', '.css', '.ts', '.jsx', '.tsx'))]
-            if files:
-                subprocess.Popen(
-                    ["python", "aider_wrapper.py"] + files,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                await self.send_audio_response(f"Added {len(files)} files to aider")
-            else:
-                await self.send_audio_response("No code files found in current directory")
+            await self.add_files_to_aider()
             
         elif "check" in text.lower() and "issues" in text.lower():
             self.log_message("Checking for issues...")
@@ -379,8 +494,122 @@ class VoiceAssistant:
                 "- Check for issues"
             )
 
+    def run_aider_with_clipboard(self):
+        """Run aider using clipboard content"""
+        if self.aider_process and self.aider_process.poll() is None:
+            self.log_message("Aider is already running. Please wait for it to finish.")
+            return
+
+        try:
+            clipboard_content = pyperclip.paste()
+            if not clipboard_content.strip():
+                self.log_message("Clipboard is empty. Please copy some content first.")
+                return
+
+            self.aider_process = subprocess.Popen(
+                ["python", "aider_wrapper.py", "-c"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            self.log_message("Started aider with clipboard content")
+            
+            # Monitor process output
+            self.root.after(100, self.check_aider_process)
+            
+        except Exception as e:
+            self.log_message(f"Error running aider with clipboard: {e}")
+
+    async def add_files_to_aider(self):
+        """Add files from current directory to aider"""
+        if self.aider_process and self.aider_process.poll() is None:
+            self.log_message("Aider is already running. Please wait for it to finish.")
+            return
+
+        try:
+            files = [f for f in os.listdir('.') if f.endswith(('.py', '.js', '.html', '.css', '.ts', '.jsx', '.tsx'))]
+            if files:
+                self.aider_process = subprocess.Popen(
+                    ["python", "aider_wrapper.py"] + files,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.PIPE
+                )
+                self.log_message(f"Added {len(files)} files to aider")
+                self.check_aider_process()
+            else:
+                self.log_message("No code files found in current directory")
+        except Exception as e:
+            self.log_message(f"Error adding files to aider: {e}")
+
+    def run_aider_with_files(self, files):
+        """Run aider with selected files"""
+        if self.aider_process and self.aider_process.poll() is None:
+            self.log_message("Aider is already running. Please wait for it to finish.")
+            return
+
+        try:
+            self.aider_process = subprocess.Popen(
+                ["python", "aider_wrapper.py"] + list(files),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE
+            )
+            self.log_message(f"Started aider with files: {', '.join(files)}")
+            self.check_aider_process()
+        except Exception as e:
+            self.log_message(f"Error running aider with files: {e}")
+
+    def check_aider_process(self):
+        """Check aider process status and output"""
+        if not self.aider_process:
+            return
+
+        # Check for output
+        while True:
+            try:
+                output = self.aider_process.stdout.readline()
+                if not output:
+                    break
+                self.log_message(output.decode().strip())
+            except Exception as e:
+                self.log_message(f"Error reading aider output: {e}")
+                break
+
+        # Check if process has finished
+        if self.aider_process.poll() is not None:
+            if self.aider_process.returncode == 0:
+                self.log_message("Aider completed successfully")
+            else:
+                self.log_message("Aider encountered an error")
+            self.aider_process = None
+        else:
+            # Process still running, check again later
+            self.root.after(100, self.check_aider_process)
+
+    def auto_check_issues(self):
+        """Automatically check for issues in auto mode"""
+        if not self.auto_mode:
+            return
+        
+        if self.aider_process and self.aider_process.poll() is None:
+            # Aider is still running, check again later
+            self.root.after(1000, self.auto_check_issues)
+            return
+        
+        # Run checks
+        asyncio.run_coroutine_threadsafe(self.check_for_issues(), self.loop)
+
     async def check_for_issues(self):
         """Check for code issues and send to aider"""
+        if self.fixing_issues:
+            self.log_message("Still working on previous issues. Please wait.")
+            return
+
+        if self.aider_process and self.aider_process.poll() is None:
+            self.log_message("Aider is already running. Please wait for it to finish.")
+            return
+
+        self.fixing_issues = True
         try:
             issues_found = False
             combined_issues = []
@@ -413,25 +642,29 @@ class VoiceAssistant:
             if issues_found:
                 self.log_message("Issues found, sending to aider...")
                 issues_file = tempfile.NamedTemporaryFile(mode='w', delete=False, prefix='aider_issues_', suffix='.txt')
+                self.temp_files.append(issues_file.name)
+                
                 with open(issues_file.name, 'w') as f:
                     f.write("\n\n".join(combined_issues))
                 
-                subprocess.Popen(
+                self.aider_process = subprocess.Popen(
                     ["python", "aider_wrapper.py", "-i", issues_file.name],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE
                 )
                 
-                await self.send_audio_response("Found issues and sent them to aider for fixing")
+                self.log_message("Started aider to fix issues")
                 
-                # Clean up temp file after a delay
-                self.root.after(5000, lambda: os.unlink(issues_file.name))
+                # Monitor process output
+                self.root.after(100, self.check_aider_process)
             else:
-                await self.send_audio_response("No issues found in the code")
+                self.log_message("No issues found in the code")
+                if self.auto_mode:
+                    # Schedule next check
+                    self.root.after(5000, self.auto_check_issues)
                 
         except Exception as e:
             self.log_message(f"Error checking for issues: {e}")
-            await self.send_audio_response(f"Error checking for issues: {str(e)}")
         finally:
             self.fixing_issues = False
             # Cleanup temp files
@@ -441,85 +674,6 @@ class VoiceAssistant:
                 except OSError:
                     pass
             self.temp_files = []
-
-    async def monitor_aider_process(self, recheck=False):
-        """Monitor aider process and handle completion"""
-        if not self.aider_process:
-            return
-
-        try:
-            # Create a task to read output
-            async def read_output():
-                while True:
-                    output = await asyncio.get_event_loop().run_in_executor(
-                        None, self.aider_process.stdout.readline
-                    )
-                    if not output:
-                        break
-                    print(output.decode().strip())
-
-            # Start reading output
-            asyncio.create_task(read_output())
-
-            # Wait for process to complete
-            await asyncio.get_event_loop().run_in_executor(
-                None, self.aider_process.wait
-            )
-
-            # Process completed
-            if self.aider_process.returncode == 0:
-                await self.send_audio_response("Aider has finished successfully")
-                if recheck:
-                    print("Waiting for filesystem to settle...")
-                    await asyncio.sleep(10)  # Increased wait time for filesystem changes
-                    await self.recheck_issues()
-            else:
-                await self.send_audio_response("Aider encountered an error")
-
-        except Exception as e:
-            print(f"Error monitoring aider process: {e}")
-            await self.send_audio_response(f"Error monitoring aider: {str(e)}")
-        finally:
-            self.aider_process = None
-
-    async def recheck_issues(self):
-        """Recheck for issues after aider fix attempt"""
-        print("Rechecking for issues...")
-        await self.send_audio_response("Checking if all issues were fixed...")
-
-        issues_remain = False
-        remaining_issues = []
-        
-        # Recheck ruff
-        ruff_result = subprocess.run(
-            ["ruff", "check", "."], 
-            capture_output=True, 
-            text=True
-        )
-        if ruff_result.stdout:
-            issues_remain = True
-            remaining_issues.append("Ruff issues still remain")
-            print("Ruff issues still remain")
-
-        # Wait before mypy check
-        await asyncio.sleep(2)
-        
-        # Recheck mypy
-        mypy_result = subprocess.run(
-            ["mypy", "."], 
-            capture_output=True, 
-            text=True
-        )
-        if mypy_result.stdout:
-            issues_remain = True
-            remaining_issues.append("Mypy issues still remain")
-            print("Mypy issues still remain")
-
-        if issues_remain:
-            message = "Some issues still remain: " + ", ".join(remaining_issues)
-            await self.send_audio_response(message + ". Would you like me to try fixing them again?")
-        else:
-            await self.send_audio_response("All issues have been fixed successfully!")
 
     async def send_audio_response(self, text):
         """Send text to OpenAI for voice response"""
@@ -541,81 +695,107 @@ class VoiceAssistant:
 
     def log_message(self, message):
         """Log a message to the GUI"""
-        self.output_text.insert(tk.END, message + "\n")
-        self.output_text.see(tk.END)
+        try:
+            self.root.after(0, self._update_log, message)
+        except Exception:
+            print(message)  # Fallback to console if GUI update fails
+
+    def _update_log(self, message):
+        """Update log in GUI thread"""
+        try:
+            self.transcription_text.insert(tk.END, message + "\n")
+            self.transcription_text.see(tk.END)
+        except Exception as e:
+            print(f"Error updating log: {e}")
+            print(message)
+
+    def browse_files(self):
+        """Open file browser to add files"""
+        files = filedialog.askopenfilenames(
+            title="Select Files",
+            filetypes=(
+                ("Python files", "*.py"),
+                ("JavaScript files", "*.js"),
+                ("All files", "*.*")
+            )
+        )
+        if files:
+            self.log_message(f"Adding files: {', '.join(files)}")
+            # Add files to aider
+            self.run_aider_with_files(files)
+
+    def check_all_issues(self):
+        """Run both ruff and mypy checks"""
+        self.issues_text.delete('1.0', tk.END)
+        self.issues_text.insert(tk.END, "Running checks...\n\n")
+        
+        # Run ruff
+        try:
+            ruff_result = subprocess.run(
+                ["ruff", "check", "."],
+                capture_output=True,
+                text=True
+            )
+            self.issues_text.insert(tk.END, "=== Ruff Issues ===\n")
+            self.issues_text.insert(tk.END, ruff_result.stdout or "No issues found!\n")
+            self.issues_text.insert(tk.END, "\n")
+        except Exception as e:
+            self.issues_text.insert(tk.END, f"Error running ruff: {e}\n")
+        
+        # Run mypy
+        try:
+            mypy_result = subprocess.run(
+                ["mypy", "."],
+                capture_output=True,
+                text=True
+            )
+            self.issues_text.insert(tk.END, "=== Mypy Issues ===\n")
+            self.issues_text.insert(tk.END, mypy_result.stdout or "No issues found!\n")
+        except Exception as e:
+            self.issues_text.insert(tk.END, f"Error running mypy: {e}\n")
+        self.issues_text.see(tk.END)
+        if hasattr(self, 'tabs') and hasattr(self, 'issues_frame'):
+            self.tabs.select(self.issues_frame)
+
+    def use_clipboard_content(self):
+        """Get content from clipboard and show in input text"""
+        try:
+            content = pyperclip.paste()
+            self.input_text.delete('1.0', tk.END)
+            self.input_text.insert('1.0', content)
+            if hasattr(self, 'tabs') and hasattr(self, 'input_frame'):
+                self.tabs.select(self.input_frame)
+            self.log_message("Clipboard content loaded into input tab")
+        except Exception as e:
+            self.log_message(f"Error getting clipboard content: {e}")
+
+    def send_input_text(self):
+        """Send input text to assistant for processing"""
+        content = self.input_text.get('1.0', tk.END).strip()
+        if content:
+            self.log_message("Processing input text...")
+            # Send to assistant for processing
+            asyncio.run_coroutine_threadsafe(
+                self.process_voice_command(content),
+                self.loop
+            )
+        else:
+            self.log_message("No input text to process")
+
+    def update_transcription(self, text, is_assistant=False):
+        """Update transcription with new text"""
+        prefix = "🤖 Assistant: " if is_assistant else "🎤 You: "
+        timestamp = time.strftime("%H:%M:%S")
+        self.transcription_text.insert(tk.END, f"\n[{timestamp}] {prefix}{text}\n")
+        self.transcription_text.see(tk.END)
+        
+        # Also update the log
+        self.log_message(f"{prefix}{text}")
 
 def read_file_content(filename):
     with open(filename, 'r') as file:
         return file.read()
-    async def handle_websocket_messages(self):
-        """Handle incoming websocket messages"""
-        while self.running:
-            try:
-                message = await self.ws.recv()
-                event = json.loads(message)
-                
-                if event["type"] == "conversation.item.input_audio_transcription.completed":
-                    text = event["transcription"]["text"]
-                    self.last_transcription = text
-                    await self.process_voice_command(text)
-                    
-                elif event["type"] == "error":
-                    print(f"Error from OpenAI: {event['error']['message']}")
-                    
-            except websockets.exceptions.ConnectionClosed:
-                print("WebSocket connection closed")
-                self.running = False
-                break
-            except Exception as e:
-                print(f"Error handling websocket message: {e}")
 
-    async def start_voice_interaction(self):
-        """Start voice interaction loop"""
-        await self.connect_websocket()
-        
-        try:
-            with sd.InputStream(
-                channels=CHANNELS,
-                samplerate=SAMPLE_RATE,
-                callback=self.audio_callback,
-                blocksize=CHUNK_SIZE
-            ):
-                print("Voice assistant is ready! Speak a command...")
-                self.recording = True
-                
-                # Start websocket message handler
-                asyncio.create_task(self.handle_websocket_messages())
-                
-                while self.running:
-                    if not self.audio_queue.empty():
-                        audio_data = b''
-                        while not self.audio_queue.empty():
-                            audio_data += self.audio_queue.get()
-                        
-                        # Send audio data to OpenAI
-                        if self.ws:
-                            try:
-                                await self.ws.send(json.dumps({
-                                    "type": "input_audio_buffer.append",
-                                    "audio": base64.b64encode(audio_data).decode()
-                                }))
-                            except Exception as e:
-                                print(f"Error sending audio data: {e}")
-                    
-                    await asyncio.sleep(0.1)
-                    
-        except Exception as e:
-            print(f"Error in voice interaction: {e}")
-        finally:
-            self.recording = False
-            if self.ws:
-                await self.ws.close()
-            # Cleanup any remaining temp files
-            for temp_file in self.temp_files:
-                try:
-                    os.unlink(temp_file)
-                except OSError:
-                    pass
 def create_message_content(instructions, file_contents):
     existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
     prompt = '''
@@ -701,7 +881,8 @@ Accomplish given tasks iteratively, breaking them down into clear steps:
 
 To make this change, we need to modify `main.py` and create a new file `hello.py`:
 
-1. Make a new `hello.py` file with `hello()` in it.
+1. Make a new `hello.py` file w
+ith `hello()` in it.
 2. Remove `hello()` from `main.py` and replace it with an import.
 
 Here are the *SEARCH/REPLACE* blocks:
@@ -786,7 +967,7 @@ def get_clipboard_content():
     Get content directly from clipboard without waiting.
     """
     if pyperclip is None:
-        print("Error: Clipboard functionality is not available.")
+        print("Error: Clipboard functionality is not available. Please install pyperclip.")
         sys.exit(1)
     try:
         content = pyperclip.paste()
@@ -833,19 +1014,13 @@ def main():
 
     args = parser.parse_args()
 
-    if args.voice_only:
-        root = tk.Tk()
-        assistant = VoiceAssistant(root)
-        asyncio.run(assistant.start_voice_interaction())
-        return
-
     if args.gui:
         root = tk.Tk()
         app = AiderVoiceGUI(root)
         if args.auto:
             app.auto_mode = True
             print("Auto mode enabled - will automatically send ruff issues to aider")
-        root.mainloop()
+        root.mainloop()  # Added mainloop call
         return
 
     if args.clipboard and args.instructions:
@@ -956,3 +1131,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
