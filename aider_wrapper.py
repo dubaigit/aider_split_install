@@ -56,9 +56,32 @@ class AiderVoiceGUI:
         self.setup_gui()
         
     def setup_gui(self):
-def read_file_content(filename):
-    with open(filename, 'r') as file:
-        return file.read()
+        # Create main frame
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create output text area
+        self.output_text = scrolledtext.ScrolledText(self.main_frame, height=20)
+        self.output_text.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create voice control button
+        self.voice_button = ttk.Button(
+            self.main_frame,
+            text="🎤 Start Voice Control",
+            command=self.toggle_voice_control
+        )
+        self.voice_button.grid(row=1, column=0, pady=10)
+        
+        # Create status label
+        self.status_label = ttk.Label(self.main_frame, text="Ready")
+        self.status_label.grid(row=1, column=1, pady=10)
+        
+        # Configure grid weights
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        self.main_frame.columnconfigure(0, weight=1)
+        self.main_frame.columnconfigure(1, weight=1)
+        self.main_frame.rowconfigure(0, weight=1)
 
 def create_message_content(instructions, file_contents):
     existing_code = "\n\n".join([f"File: {filename}\n```\n{content}\n```" for filename, content in file_contents.items()])
