@@ -1617,13 +1617,19 @@ class WebSocketManager:
                 ConnectionState.FAILED: "💥"
             }
             emoji = emoji_map.get(new_state, "")
-            self.log_message(f"{emoji} WebSocket state changed: {old_state.name} -> {new_state.name} ({transition_reason})")
+            details = f"Attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}" if new_state == ConnectionState.RECONNECTING else ""
+            self.log_message(
+                f"{emoji} WebSocket state transition: {old_state.name} -> {new_state.name}\n"
+                f"Reason: {transition_reason}\n"
+                f"{details}"
+            )
 
-        except Exception as e:
-            self.log_message(f"Error during state transition: {str(e)}")
+        except ValueError as e:
+            self.log_message(f"⚠️ Invalid state transition: {str(e)}")
             raise
-        emoji = emoji_map.get(new_state, "")
-        self.log_message(f"{emoji} WebSocket state changed: {old_state.name} -> {new_state.name} ({transition_reason})")
+        except Exception as e:
+            self.log_message(f"❌ Unexpected error during state transition: {type(e).__name__}: {str(e)}")
+            raise
 
     async def start_monitoring(self):
         """Start connection monitoring"""
@@ -1649,15 +1655,27 @@ class WebSocketManager:
 
                 await asyncio.sleep(1)
             except websockets.exceptions.WebSocketException as e:
-                self.log_message(f"WebSocket monitoring error: {e}")
+                self.log_message(f"🔌 WebSocket error during monitoring: {type(e).__name__}\n"
+                               f"Details: {str(e)}\n"
+                               f"Current state: {self.connection_state.name}")
                 self.connection_state = ConnectionState.DISCONNECTED
             except ConnectionError as e:
-                self.log_message(f"Connection monitoring error: {e}")
+                self.log_message(f"🌐 Network error during monitoring: {type(e).__name__}\n"
+                               f"Details: {str(e)}\n"
+                               f"Current state: {self.connection_state.name}")
                 self.connection_state = ConnectionState.DISCONNECTED
             except asyncio.CancelledError:
+                self.log_message("⏹️ Connection monitoring cancelled")
                 break
             except ValueError as e:
-                self.log_message(f"State transition error: {e}")
+                self.log_message(f"⚠️ Invalid state transition during monitoring:\n"
+                               f"Details: {str(e)}\n"
+                               f"Current state: {self.connection_state.name}")
+            except Exception as e:
+                self.log_message(f"❌ Unexpected error during monitoring: {type(e).__name__}\n"
+                               f"Details: {str(e)}\n"
+                               f"Current state: {self.connection_state.name}")
+                self.connection_state = ConnectionState.FAILED
 
     async def check_connection(self):
         """Check connection health with ping"""
@@ -1668,15 +1686,24 @@ class WebSocketManager:
                 return True
             return False
         except websockets.exceptions.WebSocketException as e:
-            self.log_message(f"⚠️ WebSocket connection lost due to WebSocket error: {e}")
+            self.log_message(f"⚠️ WebSocket protocol error during connection check:\n"
+                           f"Type: {type(e).__name__}\n"
+                           f"Details: {str(e)}\n"
+                           f"Last ping: {time.strftime('%H:%M:%S', time.localtime(self.last_ping_time))}")
             self.connection_state = ConnectionState.DISCONNECTED
             return False
         except ConnectionError as e:
-            self.log_message(f"⚠️ WebSocket connection lost due to connection error: {e}")
+            self.log_message(f"🌐 Network error during connection check:\n"
+                           f"Type: {type(e).__name__}\n"
+                           f"Details: {str(e)}\n"
+                           f"Last ping: {time.strftime('%H:%M:%S', time.localtime(self.last_ping_time))}")
             self.connection_state = ConnectionState.DISCONNECTED
             return False
         except Exception as e:
-            self.log_message(f"⚠️ Unexpected error during connection check: {e}")
+            self.log_message(f"❌ Critical error during connection check:\n"
+                           f"Type: {type(e).__name__}\n"
+                           f"Details: {str(e)}\n"
+                           f"Last ping: {time.strftime('%H:%M:%S', time.localtime(self.last_ping_time))}")
             self.connection_state = ConnectionState.FAILED
             return False
 
