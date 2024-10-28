@@ -1231,19 +1231,21 @@ class AsyncTestCase(unittest.TestCase):
         pass
 
     def run_async_test(self, coro):
-        """Run coroutine in the test loop with enhanced error handling"""
+        """Run coroutine in the test loop with enhanced error handling and timeout"""
         async def _run_with_setup():
             await self.asyncSetUp()
             try:
-                result = await coro
+                result = await asyncio.wait_for(coro, timeout=5.0)
                 return result
+            except asyncio.TimeoutError:
+                self.fail("Async test timed out after 5 seconds")
             finally:
                 await self.asyncTearDown()
 
         try:
             return self.loop.run_until_complete(_run_with_setup())
         except Exception as e:
-            self.fail(f"Async test failed with error: {type(e).__name__}: {e}")
+            self.fail(f"Async test failed with error: {type(e).__name__}: {str(e)}\n{e.__traceback__}")
 
     @contextmanager
     def assertNotRaises(self, exc_type):
@@ -1272,34 +1274,39 @@ class TestVoiceCommandProcessor(AsyncTestCase):
 
     def test_validate_command_empty(self):
         """Test validation of empty commands"""
-        self.run_async_test(self._test_validate_command_empty())
-
-    async def _test_validate_command_empty(self):
-        """Async implementation of empty command validation tests"""
-        self.assertFalse(await self.processor.validate_command(""))
-        self.assertFalse(await self.processor.validate_command(None))
-        self.assertFalse(await self.processor.validate_command("   "))
+        async def _test():
+            with self.assertLogs(level='WARNING') as log:
+                self.assertFalse(await self.processor.validate_command(""))
+                self.assertFalse(await self.processor.validate_command(None))
+                self.assertFalse(await self.processor.validate_command("   "))
+            self.assertTrue(any("empty command" in msg.lower() for msg in log.output))
+        
+        self.run_async_test(_test())
 
     def test_validate_command_length(self):
         """Test validation of command length"""
-        self.run_async_test(self._test_validate_command_length())
+        async def _test():
+            with self.assertLogs(level='WARNING') as log:
+                long_command = "a" * 1001
+                self.assertFalse(await self.processor.validate_command(long_command))
+                self.assertTrue(any("command too long" in msg.lower() for msg in log.output))
 
-    async def _test_validate_command_length(self):
-        """Async implementation of command length validation tests"""
-        long_command = "a" * 1001
-        self.assertFalse(await self.processor.validate_command(long_command))
-        valid_command = "a" * 1000
-        self.assertTrue(await self.processor.validate_command(valid_command))
+            valid_command = "a" * 1000
+            self.assertTrue(await self.processor.validate_command(valid_command))
+            
+        self.run_async_test(_test())
 
     def test_validate_command_profanity(self):
         """Test validation of command content"""
-        self.run_async_test(self._test_validate_command_profanity())
+        async def _test():
+            with self.assertLogs(level='WARNING') as log:
+                self.assertFalse(await self.processor.validate_command("profanity1 test"))
+                self.assertFalse(await self.processor.validate_command("test profanity2"))
+                self.assertTrue(any("inappropriate content" in msg.lower() for msg in log.output))
 
-    async def _test_validate_command_profanity(self):
-        """Async implementation of profanity validation tests"""
-        self.assertFalse(await self.processor.validate_command("profanity1 test"))
-        self.assertFalse(await self.processor.validate_command("test profanity2"))
-        self.assertTrue(await self.processor.validate_command("normal command"))
+            self.assertTrue(await self.processor.validate_command("normal command"))
+            
+        self.run_async_test(_test())
 
 class TestArgumentParsing(unittest.TestCase):
     """Test command line argument parsing"""
