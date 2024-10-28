@@ -39,8 +39,6 @@ from exceptions import (
     WebSocketError, WebSocketConnectionError, WebSocketTimeoutError,
     WebSocketAuthenticationError, StateError, ValidationError,
     ConfigurationError
-    WebSocketAuthenticationError, StateError, ValidationError,
-    ConfigurationError
 )
 
 # Import error handling
