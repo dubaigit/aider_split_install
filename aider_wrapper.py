@@ -252,21 +252,29 @@ class AiderVoiceGUI:
     @staticmethod
     def parse_arguments(args=None):
         """Parse command line arguments for the Aider Voice Assistant.
-        
+
+        This method parses and validates command line arguments that control the behavior
+        of the Aider Voice Assistant, including interface options, input sources, and 
+        operational modes.
+
         Args:
-            args (Optional[List[str]]): Command line arguments. Defaults to sys.argv[1:].
-            
+            args (Optional[List[str]]): Command line arguments to parse. If None, defaults
+                to sys.argv[1:].
+
         Returns:
-            argparse.Namespace: Parsed command line arguments with the following attributes:
-                voice_only (bool): Run in voice-only mode without GUI
+            argparse.Namespace: Parsed command line arguments containing:
+                voice_only (bool): Whether to run in voice-only mode without GUI
                 instructions (Optional[str]): Path to file containing initial instructions
-                clipboard (bool): Monitor clipboard for content
-                filenames (List[str]): Files to edit
-                chat_mode (str): Chat interaction mode ('code' or 'ask')
-                suggest_shell_commands (bool): Suggest shell commands for actions
-                model (Optional[str]): OpenAI model to use
-                gui (bool): Run with graphical interface
-                auto (bool): Run in automatic mode
+                clipboard (bool): Whether to monitor clipboard for content
+                filenames (List[str]): List of files to edit
+                chat_mode (str): Chat interaction mode, either 'code' or 'ask'
+                suggest_shell_commands (bool): Whether to suggest shell commands for actions
+                model (Optional[str]): Name of OpenAI model to use
+                gui (bool): Whether to run with graphical interface
+                auto (bool): Whether to run in automatic mode
+
+        Raises:
+            SystemExit: If invalid arguments are provided or --help is used
         """
         parser = argparse.ArgumentParser(
             description="Aider Voice Assistant - Voice-controlled coding assistant"
