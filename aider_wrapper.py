@@ -193,15 +193,27 @@ class ClipboardManager:
     """Manages clipboard monitoring and content processing"""
 
     def __init__(self, parent):
+        """Initialize ClipboardManager.
+        
+        Args:
+            parent: Parent application instance
+        """
+        # Parent reference and core functionality
         self.parent = parent
+        self.interface_state = parent.interface_state
+        self.log_message = parent.log_message
+        
+        # Clipboard state
         self.previous_content = ""
+        self.history = []
+        self.max_content_size = 1024 * 1024  # 1MB
+        
+        # Monitoring settings
         self.monitoring = False
         self.monitoring_task = None
         self.update_interval = 0.5  # seconds
-        self.max_content_size = 1024 * 1024  # 1MB
-        self.history = []
-        self.interface_state = parent.interface_state
-        self.log_message = parent.log_message
+        
+        # Content processors
         self.processors = {
             "code": self.process_code,
             "text": self.process_text,
@@ -213,6 +225,11 @@ class ClipboardManager:
         self.max_errors = 3
         self.last_error_time = 0
         self.error_cooldown = 60  # seconds
+        
+        # Performance metrics
+        self.processing_times = []
+        self.max_processing_times = 100  # Keep last 100 times
+        self.last_process_time = 0
 
     def get_clipboard_content(self):
         """Get and process current clipboard content"""
@@ -311,9 +328,34 @@ class VoiceCommandProcessor:
     """Processes and manages voice commands"""
 
     def __init__(self, parent):
+        """Initialize VoiceCommandProcessor.
+        
+        Args:
+            parent: Parent application instance
+        """
+        # Parent reference
         self.parent = parent
+        
+        # Command tracking
         self.commands = []
         self.command_history = []
+        self.max_history_size = 1000
+        
+        # Command validation
+        self.max_command_length = 1000
+        self.min_command_length = 1
+        self.profanity_list = {'profanity1', 'profanity2'}  # Add actual words as needed
+        
+        # Performance tracking
+        self.processing_times = []
+        self.max_processing_times = 100
+        self.last_process_time = 0
+        
+        # Error handling
+        self.error_count = 0
+        self.max_errors = 10
+        self.last_error_time = 0
+        self.error_cooldown = 60  # seconds
 
     def preprocess_command(self, command):
         """Clean and normalize voice command"""
@@ -1669,17 +1711,43 @@ class WebSocketManager:
     """Manages WebSocket connection state and monitoring"""
 
     def __init__(self, parent):
+        """Initialize WebSocketManager.
+        
+        Args:
+            parent: Parent application instance
+        """
+        # Parent reference and core functionality
         self.parent = parent
-        self._state = ConnectionState.DISCONNECTED
-        self.last_ping_time = 0
-        self.ping_interval = 30  # seconds
-        self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 5
-        self.monitoring_task = None
         self.log_message = parent.log_message
         self.ws = parent.ws
+        
+        # Connection state
+        self._state = ConnectionState.DISCONNECTED
+        self.connection_latency = 0
+        self.last_ping_time = 0
+        self.ping_interval = 30  # seconds
+        
+        # Reconnection settings
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 1  # Initial delay in seconds
+        self.max_reconnect_delay = 30  # Maximum delay in seconds
+        
+        # Monitoring
+        self.monitoring_task = None
+        self.monitor_interval = 1  # seconds
+        
+        # Error tracking
         self.last_error = None
         self.error_time = 0
+        self.error_count = 0
+        self.max_errors = 10
+        self.error_cooldown = 300  # 5 minutes
+        
+        # Performance metrics
+        self.latency_history = []
+        self.max_latency_history = 100
+        
         # Define valid state transitions with reasons
         self._state_transitions = {
             ConnectionState.DISCONNECTED: {
