@@ -268,6 +268,19 @@ class AiderVoiceGUI:
         client (OpenAI): OpenAI API client instance
         interface_state (dict): Tracks GUI state and content
     """
+    - Real-time audio streaming to OpenAI's API
+    - GUI components for file management and issue tracking
+    - Clipboard integration for code sharing
+    - Asynchronous WebSocket communication
+    - Performance monitoring and error handling
+
+    Attributes:
+        root (tk.Tk): The root Tkinter window
+        recording (bool): Flag indicating if voice recording is active
+        ws (websockets.WebSocketClientProtocol): WebSocket connection to OpenAI
+        client (OpenAI): OpenAI API client instance
+        interface_state (dict): Tracks GUI state and content
+    """
 
     @staticmethod
     def parse_arguments(args=None):
