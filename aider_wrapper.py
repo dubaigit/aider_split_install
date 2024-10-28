@@ -1583,6 +1583,7 @@ class WebSocketManager:
     @connection_state.setter
     def connection_state(self, new_state):
         """Set connection state with validation and logging"""
+        old_state = self._state
         try:
             if not isinstance(new_state, ConnectionState):
                 raise ValueError(f"Invalid state type: {type(new_state)}")
@@ -1598,7 +1599,6 @@ class WebSocketManager:
 
             # Get transition reason and update state
             transition_reason = self._state_transitions[self._state][new_state]
-            old_state = self._state
             self._state = new_state
 
             # Reset reconnection attempts on successful connection
@@ -1607,15 +1607,21 @@ class WebSocketManager:
             # Increment reconnection attempts on reconnecting
             elif new_state == ConnectionState.RECONNECTING:
                 self.reconnect_attempts += 1
-        
-        # Log state change with appropriate emoji
-        emoji_map = {
-            ConnectionState.CONNECTED: "✅",
-            ConnectionState.DISCONNECTED: "❌",
-            ConnectionState.CONNECTING: "🔄",
-            ConnectionState.RECONNECTING: "🔁",
-            ConnectionState.FAILED: "💥"
-        }
+
+            # Log state change with appropriate emoji
+            emoji_map = {
+                ConnectionState.CONNECTED: "✅",
+                ConnectionState.DISCONNECTED: "❌",
+                ConnectionState.CONNECTING: "🔄",
+                ConnectionState.RECONNECTING: "🔁",
+                ConnectionState.FAILED: "💥"
+            }
+            emoji = emoji_map.get(new_state, "")
+            self.log_message(f"{emoji} WebSocket state changed: {old_state.name} -> {new_state.name} ({transition_reason})")
+
+        except Exception as e:
+            self.log_message(f"Error during state transition: {str(e)}")
+            raise
         emoji = emoji_map.get(new_state, "")
         self.log_message(f"{emoji} WebSocket state changed: {old_state.name} -> {new_state.name} ({transition_reason})")
 
