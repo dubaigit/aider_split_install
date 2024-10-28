@@ -497,6 +497,10 @@ class AiderVoiceGUI:
         self.root = root
         self.root.title("Aider Voice Assistant")
         
+        # Initialize log counter
+        self.log_counter = 0
+        self.log_frequency = 50  # How often to show repeated messages
+        
         # Set up resource cleanup
         self.root.protocol("WM_DELETE_WINDOW", self.cleanup_resources)
 
@@ -908,6 +912,84 @@ class AiderVoiceGUI:
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
             raise
+
+    @exception_handler
+    def check_all_issues(self):
+        """Check all files for issues"""
+        try:
+            self.fixing_issues = True
+            self.issues_text.delete('1.0', tk.END)
+            
+            if not self.interface_state['files']:
+                self.log_message("No files to check")
+                return
+            
+            self.log_message("Checking files for issues...")
+            issues = []
+            
+            for filename, content in self.interface_state['files'].items():
+                file_issues = self._check_file_issues(filename, content)
+                if file_issues:
+                    issues.extend(file_issues)
+            
+            if issues:
+                for issue in issues:
+                    self.issues_text.insert(tk.END, f"• {issue}\n")
+                self.log_message(f"Found {len(issues)} issues")
+            else:
+                self.issues_text.insert(tk.END, "No issues found")
+                self.log_message("No issues found")
+            
+            self.interface_state['issues'] = issues
+            self.fixing_issues = False
+            
+        except Exception as e:
+            self.log_message(f"Error checking issues: {e}")
+            self.fixing_issues = False
+            raise
+
+    def _check_file_issues(self, filename: str, content: str) -> List[str]:
+        """Check a single file for issues.
+        
+        Args:
+            filename: Name of the file to check
+            content: Content of the file
+            
+        Returns:
+            List of issue descriptions
+        """
+        issues = []
+        
+        # Check for basic syntax errors
+        try:
+            compile(content, filename, 'exec')
+        except SyntaxError as e:
+            issues.append(f"{filename}:{e.lineno}: Syntax error: {e.msg}")
+        
+        # Check for common issues
+        lines = content.split('\n')
+        for i, line in enumerate(lines, 1):
+            # Check line length
+            if len(line) > 100:
+                issues.append(f"{filename}:{i}: Line too long ({len(line)} characters)")
+            
+            # Check for TODO comments
+            if 'TODO' in line:
+                issues.append(f"{filename}:{i}: TODO found: {line.strip()}")
+            
+            # Check for print statements
+            if 'print(' in line and not any(x in line for x in ['def', 'class', '#']):
+                issues.append(f"{filename}:{i}: Print statement found")
+            
+            # Check for empty except clauses
+            if line.strip() == 'except:':
+                issues.append(f"{filename}:{i}: Bare except clause")
+                
+            # Check for mutable default arguments
+            if 'def' in line and '[]' in line:
+                issues.append(f"{filename}:{i}: Mutable default argument")
+        
+        return issues
 
     @exception_handler 
     def stop_voice_control(self):
@@ -1743,6 +1825,49 @@ class ClipboardManager:
         content = pyperclip.paste()
         content_type = self.detect_content_type(content)
         return self.processors[content_type](content)
+
+    def log_message(self, message: str):
+        """Log a message to both the logger and GUI output.
+        
+        Args:
+            message: Message to log
+        """
+        try:
+            # Log to system logger
+            self.logger.info(message)
+            
+            # Log to GUI if available
+            if hasattr(self, 'output_text'):
+                # Add timestamp
+                timestamp = time.strftime("%H:%M:%S", time.localtime())
+                formatted_message = f"[{timestamp}] {message}\n"
+                
+                # Update GUI in thread-safe way
+                self.root.after(0, self._update_log_gui, formatted_message)
+        except Exception as e:
+            # Fallback to print if logging fails
+            print(f"Logging error: {e}")
+            print(f"Original message: {message}")
+
+    def _update_log_gui(self, message: str):
+        """Update GUI log in a thread-safe way.
+        
+        Args:
+            message: Message to add to log
+        """
+        try:
+            self.output_text.insert(tk.END, message)
+            self.output_text.see(tk.END)
+            
+            # Keep log size manageable
+            content = self.output_text.get('1.0', tk.END)
+            if len(content.split('\n')) > 1000:  # Keep last 1000 lines
+                lines = content.split('\n')
+                self.output_text.delete('1.0', tk.END)
+                self.output_text.insert('1.0', '\n'.join(lines[-1000:]))
+        except Exception as e:
+            print(f"GUI update error: {e}")
+            print(f"Message that failed: {message}")
 
     def detect_content_type(self, content):
         """Detect the type of clipboard content"""
