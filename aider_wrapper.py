@@ -369,8 +369,8 @@ class WebSocketManager:
         self.connection_delay = 0
 
     def get_connection_delay(self):
-        """Get current connection latency"""
-        return self.connection_latency
+        """Get current connection delay in milliseconds"""
+        return self.connection_delay
 
     async def check_connection(self):
         """Check connection health with ping"""
