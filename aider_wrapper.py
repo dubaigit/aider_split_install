@@ -36,7 +36,7 @@ from websockets.exceptions import WebSocketException
 # Custom exceptions
 from exceptions import (
     AiderError, AudioError, AudioProcessingError, AudioDeviceError,
-    WebSocketError, WebSocketConnectionError, WebSocketTimeoutError,
+    WebSocketError, WebSocketConnectionError, WebSocketTimeoutError, 
     WebSocketAuthenticationError, StateError, ValidationError,
     ConfigurationError
 )
