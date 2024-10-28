@@ -347,27 +347,6 @@ class AiderVoiceGUI:
         
         return parser.parse_args(args)
 
-    This class provides a GUI wrapper around Aider with voice control capabilities,
-    allowing users to interact with Aider through voice commands and a graphical interface.
-    It handles audio processing, WebSocket communication with OpenAI's API, and provides
-    visual feedback through various GUI components.
-
-    Key Features:
-    - Voice command processing and transcription
-    - Real-time audio streaming to OpenAI's API
-    - GUI components for file management and issue tracking
-    - Clipboard integration for code sharing
-    - Asynchronous WebSocket communication
-    - Performance monitoring and error handling
-
-    Attributes:
-        root (tk.Tk): The root Tkinter window
-        recording (bool): Flag indicating if voice recording is active
-        ws (websockets.WebSocketClientProtocol): WebSocket connection to OpenAI
-        client (OpenAI): OpenAI API client instance
-        interface_state (dict): Tracks GUI state and content
-    """
-
     def __init__(self, root):
         """Initialize the AiderVoiceGUI with all required attributes."""
         self.root = root
