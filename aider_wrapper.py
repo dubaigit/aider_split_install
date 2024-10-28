@@ -829,68 +829,69 @@ class AiderVoiceGUI:
 
         return (audio_chunk, pyaudio.paContinue)
 
-    async def connect_websocket(self, max_retries=3, retry_delay=2):
-        """Connect to OpenAI's realtime websocket API with retry logic"""
-        retries = 0
-        while retries < max_retries:
-            try:
-                self.log_message(
-                    f"Connecting to OpenAI API (attempt {retries + 1}/{max_retries})..."
-                )
-                self.ws = await websockets.connect(
-                    OPENAI_WEBSOCKET_URL,
-                    extra_headers={
-                        "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
-                        "Content-Type": "application/json",
-                        "OpenAI-Beta": "realtime=v1",
+    async def connect_websocket(self):
+        """Connect to OpenAI's realtime websocket API with enhanced retry logic"""
+        self.ws_manager.connection_state = ConnectionState.CONNECTING
+        
+        try:
+            self.ws = await websockets.connect(
+                OPENAI_WEBSOCKET_URL,
+                extra_headers={
+                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                    "Content-Type": "application/json",
+                    "OpenAI-Beta": "realtime=v1",
+                },
+                ping_interval=30,  # Enable keepalive pings
+                ping_timeout=10,   # Timeout for pings
+                close_timeout=5,   # Timeout for close operation
+            )
+
+            # Initialize session configuration
+            await self.ws.send(json.dumps({
+                "type": "session.update",
+                "session": {
+                    "model": "gpt-4o",
+                    "voice": "alloy",
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "threshold": 0.5,
+                        "prefix_padding_ms": 200,
+                        "silence_duration_ms": 300,
                     },
-                )
+                },
+            }))
 
-                # Initialize session with correct configuration
-                await self.ws.send(
-                    json.dumps(
-                        {
-                            "type": "session.update",
-                            "session": {
-                                "model": "gpt-4o",
-                                "voice": "alloy",
-                                "turn_detection": {
-                                    "type": "server_vad",  # Required parameter
-                                    "threshold": 0.5,
-                                    "prefix_padding_ms": 200,
-                                    "silence_duration_ms": 300,
-                                },
-                            },
-                        }
-                    )
-                )
+            # Initialize state
+            self.response_active = False
+            self.last_transcript_id = None
+            self.audio_buffer = bytearray()
+            self.last_audio_time = time.time()
 
-                # Initialize response state
-                self.response_active = False
-                self.last_transcript_id = None
-                self.audio_buffer = bytearray()
-                self.last_audio_time = time.time()
+            # Start handlers
+            asyncio.create_task(self.handle_websocket_messages())
+            asyncio.create_task(self.process_audio_queue())
+            
+            # Start connection monitoring
+            await self.ws_manager.start_monitoring()
+            
+            self.ws_manager.connection_state = ConnectionState.CONNECTED
+            self.log_message("✅ Connected to OpenAI realtime API")
+            return True
 
-                # Start message handling
-                asyncio.create_task(self.handle_websocket_messages())
-                asyncio.create_task(self.process_audio_queue())
+        except websockets.exceptions.InvalidStatusCode as e:
+            self.log_message(f"❌ Authentication failed: {e.status_code}")
+            self.ws_manager.connection_state = ConnectionState.FAILED
+            raise WebSocketAuthenticationError(f"Authentication failed with status {e.status_code}")
 
-                self.log_message("Connected to OpenAI realtime API")
-                return True
+        except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
+            self.log_message(f"❌ Connection failed: {type(e).__name__}: {str(e)}")
+            self.ws_manager.connection_state = ConnectionState.FAILED
+            raise WebSocketConnectionError("Failed to establish connection", e)
 
-            except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
-                self.log_message(f"Failed to connect to OpenAI: {e}")
-                retries += 1
-                if retries < max_retries:
-                    await asyncio.sleep(retry_delay)
-                else:
-                    self.log_message(f"Failed to connect after {max_retries} attempts: {e}")
-                    self.stop_voice_control()
-                    return False
-
-        self.log_message("Failed to connect after all retries")
-        self.stop_voice_control()
-        return False
+        except Exception as e:
+            self.log_message(f"❌ Unexpected error during connection: {type(e).__name__}: {str(e)}")
+            self.ws_manager.connection_state = ConnectionState.FAILED
+            raise
 
     async def process_audio_queue(self):
         """Process audio queue and send to OpenAI"""
@@ -928,78 +929,60 @@ class AiderVoiceGUI:
                 await asyncio.sleep(0.05)
 
     async def handle_websocket_messages(self):
-        """Handle incoming websocket messages, including function calls."""
-        reconnect_delay = 1
-        max_reconnect_delay = 30
-        
+        """Handle incoming websocket messages with enhanced error handling"""
         while self.ws and self.recording:
             try:
+                # Use timeout to detect stalled connections
                 message = await asyncio.wait_for(self.ws.recv(), timeout=30)
                 event = json.loads(message)
                 event_type = event.get("type")
-                
-                # Reset reconnect delay on successful message
-                reconnect_delay = 1
-                
-                if event_type == "response.function_call":
-                    await self._handle_function_call(event)
-                elif event_type == "response.text.delta":
-                    await self._handle_text_delta(event)
-                elif event_type == "input_speech_transcription_completed":
-                    await self._handle_transcription(event)
-                elif event_type == "response.audio.delta":
-                    await self._handle_audio_delta(event)
-                elif event_type == "response.audio.done":
-                    await self._handle_audio_done()
-                elif event_type == "response.done":
-                    await self._handle_response_done(event)
-                elif event_type == "error":
-                    await self._handle_error_event(event)
+
+                # Process different event types
+                handlers = {
+                    "response.function_call": self._handle_function_call,
+                    "response.text.delta": self._handle_text_delta,
+                    "input_speech_transcription_completed": self._handle_transcription,
+                    "response.audio.delta": self._handle_audio_delta,
+                    "response.audio.done": self._handle_audio_done,
+                    "response.done": self._handle_response_done,
+                    "error": self._handle_error_event,
+                }
+
+                if handler := handlers.get(event_type):
+                    try:
+                        await handler(event)
+                    except Exception as e:
+                        self.log_message(f"❌ Error in event handler for {event_type}: {type(e).__name__}: {str(e)}")
                 else:
-                    self.log_message(f"Unhandled event type: {event_type}")
+                    self.log_message(f"ℹ️ Unhandled event type: {event_type}")
 
             except asyncio.TimeoutError:
-                self.log_message("WebSocket timeout - checking connection...")
+                self.log_message("⚠️ WebSocket timeout - checking connection...")
                 if not await self.ws_manager.check_connection():
+                    self.ws_manager.connection_state = ConnectionState.DISCONNECTED
                     break
 
-            except ConnectionClosedOK:
-                self.log_message("WebSocket connection closed normally")
+            except websockets.exceptions.ConnectionClosedOK:
+                self.log_message("ℹ️ WebSocket connection closed normally")
+                self.ws_manager.connection_state = ConnectionState.DISCONNECTED
                 break
-                
-            except ConnectionClosedError as e:
-                self.log_message(f"WebSocket connection closed abnormally: {e.code} - {e.reason}")
-                await self._handle_connection_error(reconnect_delay)
-                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
-            except InvalidStatusCode as e:
-                self.log_message(f"Invalid status code from server: {e}")
-                if e.status_code == 401:
-                    raise WebSocketAuthenticationError("Authentication failed")
-                await self._handle_connection_error(reconnect_delay)
-                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
-
-            except InvalidHandshake as e:
-                self.log_message(f"WebSocket handshake failed: {e}")
-                await self._handle_connection_error(reconnect_delay)
-                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+            except websockets.exceptions.ConnectionClosedError as e:
+                self.log_message(f"⚠️ Connection closed abnormally: {e.code} - {e.reason}")
+                self.ws_manager.connection_state = ConnectionState.RECONNECTING
+                if not await self.ws_manager.attempt_reconnect():
+                    break
 
             except json.JSONDecodeError as e:
-                self.log_message(f"Error decoding message: {e}")
+                self.log_message(f"⚠️ Invalid message format: {str(e)}")
                 continue
-
-            except asyncio.TimeoutError:
-                raise WebSocketTimeoutError("Connection timed out")
-
-            except WebSocketException as e:
-                self.log_message(f"WebSocket error: {e}")
-                await self._handle_connection_error(reconnect_delay)
-                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
             except Exception as e:
-                self.log_message(f"Unexpected error in message handler: {type(e).__name__}: {e}")
+                self.log_message(f"❌ Unexpected error: {type(e).__name__}: {str(e)}")
+                self.ws_manager.connection_state = ConnectionState.ERROR
                 await asyncio.sleep(1)
-                continue
+                if not await self.ws_manager.attempt_reconnect():
+                    break
 
     async def _handle_function_call(self, event):
         """Handle function call events"""
