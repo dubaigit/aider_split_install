@@ -1675,6 +1675,74 @@ def main():
 if __name__ == "__main__":
     main()
 
+    @staticmethod
+    def parse_arguments(args=None):
+        """Parse command line arguments for the Aider Voice Assistant.
+        
+        Args:
+            args: List of command line arguments (optional, defaults to sys.argv[1:])
+            
+        Returns:
+            argparse.Namespace: Parsed command line arguments
+        """
+        parser = argparse.ArgumentParser(
+            description="Aider Voice Assistant - Voice-controlled coding assistant"
+        )
+        
+        # Voice control options
+        parser.add_argument(
+            "--voice-only",
+            action="store_true",
+            help="Run in voice-only mode without GUI"
+        )
+        
+        # Input options
+        parser.add_argument(
+            "-i", "--instructions",
+            help="Path to file containing initial instructions"
+        )
+        parser.add_argument(
+            "-c", "--clipboard",
+            action="store_true", 
+            help="Monitor clipboard for content"
+        )
+        parser.add_argument(
+            "filenames",
+            nargs="*",
+            help="Files to edit"
+        )
+        
+        # Behavior options
+        parser.add_argument(
+            "--chat-mode",
+            choices=["code", "ask"],
+            default="code",
+            help="Chat interaction mode (default: code)"
+        )
+        parser.add_argument(
+            "--suggest-shell-commands",
+            action="store_true",
+            help="Suggest shell commands for actions"
+        )
+        parser.add_argument(
+            "--model",
+            help="OpenAI model to use"
+        )
+        
+        # Interface options
+        parser.add_argument(
+            "--gui",
+            action="store_true",
+            help="Run with graphical interface"
+        )
+        parser.add_argument(
+            "--auto",
+            action="store_true", 
+            help="Run in automatic mode"
+        )
+        
+        return parser.parse_args(args)
+
     def _init_queues(self):
         """Initialize queue components"""
         self.mic_queue = Queue()
