@@ -416,24 +416,24 @@ class TestWebSocketManager(unittest.TestCase):
 
     def test_init(self):
         """Test initialization"""
-        self.assertEqual(self.manager.connection_state, "disconnected")
+        self.assertEqual(self.manager.connection_state, ConnectionState.DISCONNECTED)
         self.assertEqual(self.manager.reconnect_attempts, 0)
         self.assertEqual(self.manager.max_reconnect_attempts, 5)
         self.assertEqual(self.manager.ping_interval, 30)
 
     async def test_check_connection_success(self):
         """Test successful connection check"""
-        self.manager.connection_state = "connected"
+        self.manager.connection_state = ConnectionState.CONNECTED
         await self.manager.check_connection()
         self.mock_ws.ping.assert_called_once()
-        self.assertEqual(self.manager.connection_state, "connected")
+        self.assertEqual(self.manager.connection_state, ConnectionState.CONNECTED)
 
     async def test_check_connection_failure(self):
         """Test connection check failure"""
-        self.manager.connection_state = "connected"
+        self.manager.connection_state = ConnectionState.CONNECTED
         self.mock_ws.ping.side_effect = websockets.exceptions.WebSocketException()
         await self.manager.check_connection()
-        self.assertEqual(self.manager.connection_state, "disconnected")
+        self.assertEqual(self.manager.connection_state, ConnectionState.DISCONNECTED)
 
     async def test_monitor_connection(self):
         """Test connection monitoring"""
@@ -446,20 +446,23 @@ class TestWebSocketManager(unittest.TestCase):
         monitor_task = asyncio.create_task(self.manager.monitor_connection())
         
         try:
-            # Wait for check_connection to be called
+            # Test connected state monitoring
             await asyncio.sleep(0.1)
             self.manager.check_connection.assert_called_once()
             
-            # Test monitoring disconnected state
+            # Test state transitions
             self.manager.connection_state = ConnectionState.DISCONNECTED
             await asyncio.sleep(0.1)
             self.manager.attempt_reconnect.assert_called_once()
             
-            # Test failed state with max retries
+            # Test reconnection attempts limit
             self.manager.connection_state = ConnectionState.FAILED
             self.manager.reconnect_attempts = self.manager.max_reconnect_attempts
             await asyncio.sleep(0.1)
-            self.assertEqual(self.manager.attempt_reconnect.call_count, 1)  # Should not increment
+            self.assertEqual(self.manager.attempt_reconnect.call_count, 1)
+            
+            # Verify final state
+            self.assertEqual(self.manager.connection_state, ConnectionState.FAILED)
             
         finally:
             monitor_task.cancel()
@@ -475,7 +478,7 @@ class TestWebSocketManager(unittest.TestCase):
         self.parent.connect_websocket = mock_connect
         
         await self.manager.attempt_reconnect()
-        self.assertEqual(self.manager.connection_state, "connected")
+        self.assertEqual(self.manager.connection_state, ConnectionState.CONNECTED)
         self.assertEqual(self.manager.reconnect_attempts, 0)
 
     async def test_attempt_reconnect_failure(self):
@@ -485,7 +488,7 @@ class TestWebSocketManager(unittest.TestCase):
         self.parent.connect_websocket = mock_connect
         
         await self.manager.attempt_reconnect()
-        self.assertEqual(self.manager.connection_state, "disconnected")
+        self.assertEqual(self.manager.connection_state, ConnectionState.DISCONNECTED)
         self.assertEqual(self.manager.reconnect_attempts, 1)
 
     async def test_max_reconnect_attempts(self):
