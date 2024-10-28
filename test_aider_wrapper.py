@@ -43,7 +43,7 @@ class AsyncMock(MagicMock):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Set default return values for special methods
-        self.__bool__.return_value = True
+        self.side_effect = lambda: True
         
     async def __call__(self, *args, **kwargs):
         return super(AsyncMock, self).__call__(*args, **kwargs)
@@ -163,7 +163,7 @@ class TestAiderVoiceGUI(unittest.TestCase):
         mock_ws = AsyncMock()
         mock_ws.send = AsyncMock()
         mock_ws.ping = AsyncMock()
-        mock_ws.__bool__.return_value = True
+        mock_ws.side_effect = lambda: True
         mock_connect.return_value = mock_ws
 
         async def run_test():
@@ -252,7 +252,7 @@ class TestAiderVoiceGUI(unittest.TestCase):
         mock_ws = AsyncMock()
         mock_ws.send = AsyncMock()
         mock_ws.ping = AsyncMock()
-        mock_ws.__bool__.return_value = True
+        mock_ws.side_effect = lambda: True
         mock_connect.return_value = mock_ws
 
         async def run_test():
