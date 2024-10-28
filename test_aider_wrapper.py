@@ -534,7 +534,36 @@ class TestWebSocketManager(unittest.TestCase):
 
     def test_monitor_connection_sync(self):
         """Test monitor_connection using sync wrapper"""
-        self.run_async_test(self.test_monitor_connection())
+        async def test_coro():
+            # Setup
+            self.manager.check_connection = AsyncMock()
+            self.manager.attempt_reconnect = AsyncMock()
+            
+            # Test monitoring connected state
+            self.manager.connection_state = "connected"
+            self.manager.last_ping_time = 0
+            monitor_task = asyncio.create_task(self.manager.monitor_connection())
+            
+            # Allow monitor to run briefly
+            await asyncio.sleep(0.1)
+            
+            # Verify behavior
+            self.manager.check_connection.assert_called()
+            
+            # Test monitoring disconnected state
+            self.manager.connection_state = "disconnected"
+            await asyncio.sleep(0.1)
+            self.manager.attempt_reconnect.assert_called()
+            
+            # Cleanup
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
+
+        # Run the async test in a new event loop
+        self.run_async_test(test_coro())
 
     def test_attempt_reconnect_sync(self):
         """Test attempt_reconnect using sync wrapper"""
