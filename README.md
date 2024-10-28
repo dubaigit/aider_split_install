@@ -1,141 +1,270 @@
-# aider_split Usage Guide (Max 5 Concurrent Tasks)
+# aider_split
+
+A powerful parallel code modification tool that leverages aider CLI to run multiple concurrent code refactoring tasks, supporting parallel modifications within the same file using precise search/replace patterns.
+
+[![GitHub](https://img.shields.io/github/license/dubaigit/aider_split_install)](https://github.com/dubaigit/aider_split_install/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/downloads/)
+
+## Features
+
+- 🚀 Run up to 5 concurrent code modification tasks
+- 📝 Concurrent modifications within the same file using search/diff patterns
+- 🎯 Non-conflicting parallel changes in single file sections
+- 🔄 Automatic task management and cleanup
+- 🎨 Color-coded progress monitoring
+- 🛡️ Isolated error handling per task
+
+## Prerequisites
+
+- Python 3.7+
+- aider CLI tool (`pip install aider-chat`)
+- Anthropic API key (for Claude access)
 
 ## Quick Start
+
+### Linux/MacOS
 ```bash
 # Install globally
-aider_split --setup-bin
+sudo aider_split --setup-bin
 
 # Run with 5 concurrent tasks
-aider_split --max-concurrent 5 file1.py file2.py file3.py file4.py file5.py
+aider_split --max-concurrent 5 app.py
 ```
 
-## Writing fix_instructions.txt for Parallel Processing
+### Windows
+```powershell
+# Navigate to script directory
+cd path\to\aider_split
 
-### Example with 5 Concurrent Tasks:
-```
-1. Update user authentication (auth.py)
-- Target: auth.py
-- Location:
-  * Class: Authentication
-  * Method: verify_token, create_token
-  * Add imports: from jwt import encode, decode
-- Changes:
-  * Implement JWT token handling
-  * Add token expiration
-  * Add refresh token logic
-- Expected: JWT-based auth with refresh tokens
+# Run directly with Python
+python aider_split.py --max-concurrent 5 app.py
 
-2. Enhance database models (models.py)
-- Target: models.py
-- Location:
-  * Class: BaseModel
-  * Method: __init__, save
-  * Add imports: from sqlalchemy.sql import func
-- Changes:
-  * Add timestamps (created_at, updated_at)
-  * Add soft delete functionality
-  * Add schema validation
-- Expected: Improved model with tracking
-
-3. Implement caching (cache.py)
-- Target: cache.py
-- Location:
-  * Class: CacheManager
-  * Method: get_or_set
-  * Add imports: from redis import Redis
-- Changes:
-  * Add Redis connection
-  * Implement cache expiry
-  * Add cache invalidation
-- Expected: Redis-based caching system
-
-4. Add API rate limiting (middleware.py)
-- Target: middleware.py
-- Location:
-  * Class: RateLimiter
-  * Method: check_limit
-  * Add imports: import time, threading
-- Changes:
-  * Implement token bucket algorithm
-  * Add user-based limits
-  * Add burst handling
-- Expected: Flexible rate limiting
-
-5. Update logging system (logger.py)
-- Target: logger.py
-- Location:
-  * Class: CustomLogger
-  * Method: log_request
-  * Add imports: import structlog
-- Changes:
-  * Add structured logging
-  * Add request tracing
-  * Add performance metrics
-- Expected: Comprehensive logging system
+# Or, from any location using full path
+python C:\path\to\aider_split\aider_split.py --max-concurrent 5 app.py
 ```
 
-### Tips for 5 Concurrent Tasks:
-1. **File Independence**
-   - Each task should work on different files
-   - Avoid interdependent changes
-   - Clearly specify file boundaries
+## Using with CLINE
 
-2. **Resource Usage**
-   - Each task gets its own aider instance
-   - Monitor system resources
-   - Consider memory usage
+```markdown
+1. **Load File and Identify Issues**:
+   - Read the contents of the specified file and analyze it to understand any errors or issues requiring fixes.
+   - Document specific issues and the code sections needing modification.
 
-3. **Task Organization**
-   ```
-   Task 1 (auth.py):      Authentication changes
-   Task 2 (models.py):    Database model updates
-   Task 3 (cache.py):     Caching implementation
-   Task 4 (middleware.py): Rate limiting
-   Task 5 (logger.py):    Logging system
-   ```
+2. **Write Instructions**:
+   - Write detailed, clear instructions in `fix_instructions.txt`, outlining the exact changes required.
+   - Ensure clarity, specifying exact lines or code sections to modify.
+      2. Structure each chunk in fix_instructions.txt as follows:
+         ```
+         1. [Task Title]
+         - Specific goal/outcome
+         - Any constraints or requirements
+         - Expected behavior
+         - Files to modify
+         ```
 
-## Running Tasks
+3. **Use Aider Command**:
+   - Execute the following command to apply fixes:  
+     ```bash
+     aider_split file1.py file2.py
+     ```
 
-### Basic Command
+4. **Verify and Reiterate**:
+   - Reread the file to confirm if all specified changes were correctly applied.
+   - If any modifications are incomplete, add specific details about what remains to be addressed, update `fix_instructions.txt`, and rerun the command if needed.
+```
+
+> **Note**: 
+> - When using CLINE, you may need to remind it once to use aider by saying "Let's use aider to modify these files" at the start of your conversation.
+> - CLINE may struggle with very large files. Using aider_split with precise search/replace patterns is recommended for better handling of large codebases.
+
+## Complete Example Usage
+
+1. **Create your Python file (app.py)**:
+```python
+import os
+import sys
+
+class UserManager:
+    def __init__(self):
+        self.users = {}
+
+    def create_user(self, data):
+        username = data.get('username')
+        self.users[username] = data
+        return True
+
+    def delete_user(self, user_id):
+        if user_id in self.users:
+            del self.users[user_id]
+```
+
+2. **Create fix_instructions.txt**:
+```
+1. Update method signatures (app.py)
+- Target: app.py
+- Location:
+  * Class: UserManager
+  * Method: create_user
+  * Search Pattern: def create_user(self, data):
+- Changes:
+  * Add type hints
+  * Add validation
+  * Add docstring
+- Expected: Type-safe user creation
+
+2. Add error handling (app.py)
+- Target: app.py
+- Location:
+  * Class: UserManager
+  * Method: delete_user
+  * Search Pattern: def delete_user(self, user_id):
+- Changes:
+  * Add try-except
+  * Add logging
+  * Add return value
+- Expected: Robust error handling
+
+3. Update imports (app.py)
+- Target: app.py
+- Location:
+  * Section: imports
+  * Search Pattern: import os\nimport sys
+- Changes:
+  * Add typing imports
+  * Add logging import
+  * Add validation imports
+- Expected: Complete imports
+
+4. Add class docstring (app.py)
+- Target: app.py
+- Location:
+  * Class: UserManager
+  * Search Pattern: class UserManager:
+- Changes:
+  * Add class docstring
+  * Add type hints for class attrs
+- Expected: Documented class
+
+5. Add validation methods (app.py)
+- Target: app.py
+- Location:
+  * Class: UserManager
+  * After: delete_user
+- Changes:
+  * Add validate_user method
+  * Add user existence check
+- Expected: Input validation
+```
+
+3. **Run aider_split**:
+
+Linux/MacOS:
 ```bash
-aider_split --max-concurrent 5 *.py
+aider_split --max-concurrent 5 app.py
 ```
 
-### With Specific Files
-```bash
-aider_split --max-concurrent 5 auth.py models.py cache.py middleware.py logger.py
+Windows:
+```powershell
+python aider_split.py --max-concurrent 5 app.py
 ```
 
-### Progress Display
+4. **Modified app.py result**:
+```python
+from typing import Dict, Optional, Any
+import os
+import sys
+import logging
+from validators import validate_username
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class UserManager:
+    """
+    Manages user operations including creation, deletion, and validation.
+    
+    Attributes:
+        users (Dict[str, Dict[str, Any]]): Storage for user data
+    """
+    
+    def __init__(self):
+        self.users: Dict[str, Dict[str, Any]] = {}
+
+    def validate_user(self, username: str) -> bool:
+        """
+        Validate user data before operations.
+        
+        Args:
+            username (str): Username to validate
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        return bool(username and validate_username(username))
+
+    def create_user(self, data: Dict[str, Any]) -> bool:
+        """
+        Create a new user with validated data.
+        
+        Args:
+            data (Dict[str, Any]): User data containing username
+            
+        Returns:
+            bool: Success status
+            
+        Raises:
+            ValueError: For invalid input
+        """
+        try:
+            username = data.get('username')
+            if not self.validate_user(username):
+                raise ValueError("Invalid username")
+            
+            if username in self.users:
+                raise ValueError("Username exists")
+                
+            self.users[username] = data
+            logger.info(f"User {username} created")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Create user failed: {e}")
+            return False
+
+    def delete_user(self, user_id: str) -> bool:
+        """
+        Delete user by ID.
+        
+        Args:
+            user_id (str): User ID
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            if user_id not in self.users:
+                logger.warning(f"User {user_id} not found")
+                return False
+                
+            del self.users[user_id]
+            logger.info(f"User {user_id} deleted")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Delete failed: {e}")
+            return False
 ```
-==================== 🟢 STARTING TASK 1 ====================
-[Auth updates running...]
 
-==================== 🟢 STARTING TASK 2 ====================
-[Model updates running...]
-
-==================== 🟢 STARTING TASK 3 ====================
-[Cache implementation running...]
-
-==================== 🟢 STARTING TASK 4 ====================
-[Rate limiting running...]
-
-==================== 🟢 STARTING TASK 5 ====================
-[Logging updates running...]
-```
-
-## Task Template for Each File
+## Task Template for Concurrent Changes
 
 ### Template Structure:
 ```
 [task number]. [task title] ([filename])
 - Target: [filename]
 - Location:
-  * Package: [package name]
-  * Module: [module name]
-  * Class: [class name]
-  * Method: [method name(s)]
-  * Section: [specific code section]
+  * Section: [specific part of file]
+  * Class/Function: [name]
+  * Search Pattern: [exact code to match]
 - Changes:
   * [detailed change 1]
   * [detailed change 2]
@@ -148,15 +277,15 @@ aider_split --max-concurrent 5 auth.py models.py cache.py middleware.py logger.p
 
 ## Efficiency Tips
 
-1. **Parallel Planning**
-   - Group related changes by file
-   - Ensure changes don't conflict
-   - Distribute work evenly
+1. **Pattern Matching**
+   - Use unique, exact code matches
+   - Include surrounding context if needed
+   - Avoid overlapping patterns
 
 2. **Resource Management**
-   - 5 concurrent tasks use more memory
-   - Monitor system performance
-   - Adjust if needed
+   - Monitor concurrent task load
+   - Balance task size and complexity
+   - Consider system resources
 
 3. **Error Handling**
    - Each task has isolated error handling
@@ -174,94 +303,41 @@ Options:
   --help, -h         Show this help message
 ```
 
-## Running Methods
-
-### Global Binary Access (macOS)
-```bash
-# Install globally
-sudo aider_split --setup-bin
-
-# This creates a symlink in /usr/local/bin
-# Now you can run from anywhere:
-aider_split --max-concurrent 5 file1.py file2.py
-```
-
-### Direct File Path Usage
-You can run aider_split using the full path without installation:
-```bash
-# Using full path
-/path/to/aider_split.py --max-concurrent 5 file1.py file2.py
-
-# Or with python directly
-python3 /path/to/aider_split.py --max-concurrent 5 file1.py file2.py
-```
-
-### Running with Custom Instructions
-You can run aider_split directly with custom instructions without installing it globally. This is useful for one-off tasks or testing. Here's an example workflow:
-
-1. **Create Custom Instructions**:
-   Create a `fix_instructions.txt` with the following structure:
-   ```
-   1. [Task Title]
-   - Specific goal/outcome 
-   - Any constraints or requirements
-   - Expected behavior
-   - Files to modify
-   ```
-
-2. **Run Directly**:
-   ```bash
-   python3 aider_split.py file1.py file2.py
-   ```
-
-3. **Process Flow**:
-   - Reads and analyzes specified files
-   - Follows instructions in fix_instructions.txt
-   - Applies changes in parallel
-   - Verifies modifications
-
-4. **Verification**:
-   - Review changes after completion
-   - Update instructions if needed
-   - Rerun for any remaining fixes
-
 ## Common Use Cases
 
-1. **Full System Update**
+1. **Large File Refactoring**
 ```bash
-aider_split --max-concurrent 5 src/*.py
+aider_split --max-concurrent 5 large_module.py
 ```
 
-2. **Selected Files**
+2. **Multiple Files**
 ```bash
-aider_split --max-concurrent 5 auth.py models.py cache.py
+aider_split --max-concurrent 5 *.py
 ```
 
-3. **Test Files**
+3. **Targeted Changes**
 ```bash
-aider_split --max-concurrent 5 tests/*.py
+aider_split --max-concurrent 5 specific_file.py
 ```
 
 ## Progress Monitoring
-- Real-time status for 5 concurrent tasks
+- Real-time status for concurrent tasks
 - Color-coded output
 - Clear task boundaries
 - Success/failure indicators
 
-Need any clarification or specific examples?
-
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests.
+1. Fork the [repository](https://github.com/dubaigit/aider_split_install)
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-MIT License
+MIT License - see [LICENSE](https://github.com/dubaigit/aider_split_install/blob/main/LICENSE) file for details
 
-Copyright (c) 2024
+## Author
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+[dubaigit](https://github.com/dubaigit)
