@@ -31,8 +31,9 @@ class AsyncMock(MagicMock):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._is_async = True
-        self._return_value = kwargs.get('return_value', True)
-        self._side_effect = kwargs.get('side_effect', None)
+        self._return_value: Any = kwargs.get('return_value', True)
+        self._side_effect: Optional[Union[Exception, callable]] = kwargs.get('side_effect', None)
+        self._was_called: bool = False
         
     async def __call__(self, *args: Any, **kwargs: Any) -> Any:
         result = super().__call__(*args, **kwargs)
@@ -70,7 +71,8 @@ class AsyncMock(MagicMock):
     async def __anext__(self) -> None:
         raise StopAsyncIteration
 
-def create_mock_args(overrides: Optional[Dict[str, Any]] = None) -> MagicMock:
+def create_mock_args(overrides: Optional[Dict[str, Any]] = None, 
+                    validate: bool = True) -> MagicMock:
     """Create standardized mock arguments for testing.
     
     Args:
@@ -112,14 +114,24 @@ def create_mock_args(overrides: Optional[Dict[str, Any]] = None) -> MagicMock:
     # Apply any overrides
     if overrides:
         for key, value in overrides.items():
-            if key not in default_args:
+            if validate and key not in default_args:
                 raise ValueError(f"Unknown argument override: {key}")
             setattr(args, key, value)
+            
+        # Validate argument combinations
+        if validate:
+            if getattr(args, 'voice_only', False) and getattr(args, 'gui', False):
+                raise ValueError("Cannot use voice_only with gui=True")
+            if getattr(args, 'temperature', 0) < 0 or getattr(args, 'temperature', 0) > 1:
+                raise ValueError("Temperature must be between 0 and 1")
+            if getattr(args, 'max_tokens', 0) < 1:
+                raise ValueError("max_tokens must be positive")
             
     return args
 
 def create_gui_app(mock_args: Optional[MagicMock] = None,
-                  setup_websocket: bool = False) -> Tuple[AiderVoiceGUI, tk.Tk]:
+                  setup_websocket: bool = False,
+                  validate_state: bool = True) -> Tuple[AiderVoiceGUI, tk.Tk]:
     """Create a GUI application instance with mocked arguments and optional WebSocket setup.
     
     Args:
@@ -148,11 +160,21 @@ def create_gui_app(mock_args: Optional[MagicMock] = None,
             app.ws_manager = WebSocketManager(app)
             app.ws_manager.connection_state = ConnectionState.CONNECTED
             
+        if validate_state:
+            # Validate GUI state
+            if not hasattr(app, 'main_frame') or not app.main_frame:
+                raise RuntimeError("GUI initialization failed - main_frame missing")
+            if not hasattr(app, 'input_text') or not app.input_text:
+                raise RuntimeError("GUI initialization failed - input_text missing")
+            if not hasattr(app, 'output_text') or not app.output_text:
+                raise RuntimeError("GUI initialization failed - output_text missing")
+                
         return app, root
 
 def create_buffer_manager(max_size: int = 1024,
                         chunk_size: int = 256,
-                        sample_rate: int = 24000) -> AudioBufferManager:
+                        sample_rate: int = 24000,
+                        validate: bool = True) -> AudioBufferManager:
     """Create an AudioBufferManager instance for testing.
     
     Args:
@@ -166,10 +188,15 @@ def create_buffer_manager(max_size: int = 1024,
     Raises:
         ValueError: If any parameters are invalid
     """
-    if max_size <= 0 or chunk_size <= 0 or sample_rate <= 0:
-        raise ValueError("Buffer parameters must be positive")
-    if chunk_size > max_size:
-        raise ValueError("Chunk size cannot exceed max size")
+    if validate:
+        if max_size <= 0 or chunk_size <= 0 or sample_rate <= 0:
+            raise ValueError("Buffer parameters must be positive")
+        if chunk_size > max_size:
+            raise ValueError("Chunk size cannot exceed max size")
+        if sample_rate not in {8000, 16000, 24000, 44100, 48000}:
+            raise ValueError("Invalid sample rate")
+        if chunk_size % 2 != 0:
+            raise ValueError("Chunk size must be even")
         
     return AudioBufferManager(
         max_size=max_size,
