@@ -308,7 +308,8 @@ class AiderVoiceGUI:
             input_group.add_argument(
                 "filenames",
                 nargs="*",
-                help="Files to edit"
+                type=str,
+                help="Files to edit (must exist and be readable)"
             )
             
             # Behavior options
@@ -326,13 +327,19 @@ class AiderVoiceGUI:
             behavior_group.add_argument(
                 "--model",
                 default="gpt-4",
+                choices=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
                 help="OpenAI GPT model to use for chat"
+            )
+            behavior_group.add_argument(
+                "--api-key",
+                help="OpenAI API key (can also use OPENAI_API_KEY env var)"
             )
             behavior_group.add_argument(
                 "--temperature",
                 type=float,
                 default=0.7,
-                help="Temperature for model responses"
+                choices=[i/10.0 for i in range(0, 11)],
+                help="Temperature for model responses (0.0-1.0)"
             )
             behavior_group.add_argument(
                 "--max-tokens",
@@ -389,12 +396,21 @@ class AiderVoiceGUI:
             if not os.path.exists(filename):
                 parser.error(f"File not found: {filename}")
                 
-        if parsed_args.temperature < 0 or parsed_args.temperature > 1:
-            parser.error("Temperature must be between 0 and 1")
-            
         if parsed_args.max_tokens < 1:
             parser.error("Max tokens must be positive")
-            
+
+        # Validate files exist and are readable
+        for filename in parsed_args.filenames:
+            try:
+                with open(filename, 'r') as f:
+                    pass
+            except (IOError, OSError) as e:
+                parser.error(f"Cannot read file '{filename}': {e}")
+
+        # Check for API key in args or environment
+        if not parsed_args.api_key and not os.getenv('OPENAI_API_KEY'):
+            parser.error("OpenAI API key must be provided via --api-key or OPENAI_API_KEY environment variable")
+
         return parsed_args
 
     def __init__(self, root):
