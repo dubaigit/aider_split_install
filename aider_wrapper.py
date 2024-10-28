@@ -1549,24 +1549,29 @@ class WebSocketManager:
         self._state_transitions = {
             ConnectionState.DISCONNECTED: {
                 ConnectionState.CONNECTING: "Initial connection attempt",
+                ConnectionState.FAILED: "Connection initialization failed",
             },
             ConnectionState.CONNECTING: {
                 ConnectionState.CONNECTED: "Connection established",
                 ConnectionState.FAILED: "Connection attempt failed",
                 ConnectionState.RECONNECTING: "Connection lost, attempting reconnect",
+                ConnectionState.DISCONNECTED: "Connection attempt cancelled",
             },
             ConnectionState.CONNECTED: {
                 ConnectionState.DISCONNECTED: "Connection closed normally",
                 ConnectionState.RECONNECTING: "Connection lost unexpectedly",
+                ConnectionState.FAILED: "Connection failed unexpectedly",
             },
             ConnectionState.RECONNECTING: {
                 ConnectionState.CONNECTED: "Reconnection successful",
                 ConnectionState.FAILED: "Reconnection attempts exhausted",
                 ConnectionState.DISCONNECTED: "Reconnection cancelled",
+                ConnectionState.CONNECTING: "Retrying connection",
             },
             ConnectionState.FAILED: {
                 ConnectionState.CONNECTING: "Retrying connection",
                 ConnectionState.DISCONNECTED: "Connection permanently failed",
+                ConnectionState.RECONNECTING: "Attempting recovery",
             }
         }
 
@@ -1578,23 +1583,30 @@ class WebSocketManager:
     @connection_state.setter
     def connection_state(self, new_state):
         """Set connection state with validation and logging"""
-        if not isinstance(new_state, ConnectionState):
-            raise ValueError(f"Invalid state type: {type(new_state)}")
+        try:
+            if not isinstance(new_state, ConnectionState):
+                raise ValueError(f"Invalid state type: {type(new_state)}")
             
-        # Validate state transition
-        if new_state not in self._state_transitions[self._state]:
-            valid_transitions = [f"{s.name} ({reason})" for s, reason in self._state_transitions[self._state].items()]
-            self.log_message(f"⚠️ Invalid state transition attempted: {self._state.name} -> {new_state.name}")
-            raise ValueError(
-                f"Invalid state transition from {self._state.name} to {new_state.name}.\n"
-                f"Valid transitions are:\n" + "\n".join(f"- {t}" for t in valid_transitions)
-            )
+            # Validate state transition
+            if new_state not in self._state_transitions[self._state]:
+                valid_transitions = [f"{s.name} ({reason})" for s, reason in self._state_transitions[self._state].items()]
+                self.log_message(f"⚠️ Invalid state transition attempted: {self._state.name} -> {new_state.name}")
+                raise ValueError(
+                    f"Invalid state transition from {self._state.name} to {new_state.name}.\n"
+                    f"Valid transitions are:\n" + "\n".join(f"- {t}" for t in valid_transitions)
+                )
 
-        # Get transition reason
-        transition_reason = self._state_transitions[self._state][new_state]
-            
-        old_state = self._state
-        self._state = new_state
+            # Get transition reason and update state
+            transition_reason = self._state_transitions[self._state][new_state]
+            old_state = self._state
+            self._state = new_state
+
+            # Reset reconnection attempts on successful connection
+            if new_state == ConnectionState.CONNECTED:
+                self.reconnect_attempts = 0
+            # Increment reconnection attempts on reconnecting
+            elif new_state == ConnectionState.RECONNECTING:
+                self.reconnect_attempts += 1
         
         # Log state change with appropriate emoji
         emoji_map = {
