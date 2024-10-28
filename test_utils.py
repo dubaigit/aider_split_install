@@ -36,14 +36,7 @@ class AsyncMock(MagicMock):
         raise StopAsyncIteration
 
 def create_mock_args(overrides=None):
-    """Create standardized mock arguments for testing.
-    
-    Args:
-        overrides (dict, optional): Dictionary of argument overrides. Defaults to None.
-        
-    Returns:
-        MagicMock: Mock arguments object with standard testing values.
-    """
+    """Create standardized mock arguments for testing"""
     args = MagicMock()
     args.voice_only = False
     args.instructions = None
