@@ -4,6 +4,11 @@ This module provides the core functionality for the Aider Voice Assistant,
 including GUI, audio processing, and WebSocket communication.
 """
 
+import functools
+import logging
+import traceback
+from typing import Callable, TypeVar, ParamSpec
+
 # Standard library imports
 import argparse
 import asyncio
@@ -271,11 +276,16 @@ class ClipboardManager:
         self.max_processing_times = 100  # Keep last 100 times
         self.last_process_time = 0
 
+    @exception_handler
     def get_clipboard_content(self):
         """Get and process current clipboard content"""
-        content = pyperclip.paste()
-        content_type = self.detect_content_type(content)
-        return self.processors[content_type](content)
+        try:
+            content = pyperclip.paste()
+            content_type = self.detect_content_type(content)
+            return self.processors[content_type](content)
+        except Exception as e:
+            self.log_message(f"Error getting clipboard content: {e}")
+            return ""
 
     def detect_content_type(self, content):
         """Detect the type of clipboard content"""
