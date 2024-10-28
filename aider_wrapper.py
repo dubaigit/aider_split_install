@@ -17,6 +17,14 @@ from tkinter import filedialog, scrolledtext, ttk
 
 # Third-party imports
 import pyaudio
+from websockets.exceptions import (
+    WebSocketException, 
+    ConnectionClosed, 
+    InvalidStatusCode,
+    InvalidHandshake,
+    ConnectionClosedError,
+    ConnectionClosedOK
+)
 
 # Optional third-party imports with fallbacks
 try:
@@ -165,6 +173,20 @@ class KeyboardShortcuts:
 
 class AudioProcessingError(Exception):
     """Custom exception for audio processing errors"""
+
+class WebSocketConnectionError(Exception):
+    """Custom exception for WebSocket connection errors"""
+    def __init__(self, message, original_error=None):
+        super().__init__(message)
+        self.original_error = original_error
+
+class WebSocketTimeoutError(WebSocketConnectionError):
+    """Custom exception for WebSocket timeout errors"""
+    pass
+
+class WebSocketAuthenticationError(WebSocketConnectionError):
+    """Custom exception for WebSocket authentication errors"""
+    pass
 
 
 class ResultProcessor:
@@ -1004,10 +1026,24 @@ class AiderVoiceGUI:
                 if not await self.ws_manager.check_connection():
                     break
 
-            except websockets.exceptions.ConnectionClosed as e:
-                self.log_message(f"WebSocket connection closed: {e.code} - {e.reason}")
-                if e.code in (1000, 1001):  # Normal closure
-                    break
+            except ConnectionClosedOK:
+                self.log_message("WebSocket connection closed normally")
+                break
+                
+            except ConnectionClosedError as e:
+                self.log_message(f"WebSocket connection closed abnormally: {e.code} - {e.reason}")
+                await self._handle_connection_error(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+
+            except InvalidStatusCode as e:
+                self.log_message(f"Invalid status code from server: {e}")
+                if e.status_code == 401:
+                    raise WebSocketAuthenticationError("Authentication failed")
+                await self._handle_connection_error(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+
+            except InvalidHandshake as e:
+                self.log_message(f"WebSocket handshake failed: {e}")
                 await self._handle_connection_error(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
@@ -1015,7 +1051,10 @@ class AiderVoiceGUI:
                 self.log_message(f"Error decoding message: {e}")
                 continue
 
-            except websockets.exceptions.WebSocketException as e:
+            except asyncio.TimeoutError:
+                raise WebSocketTimeoutError("Connection timed out")
+
+            except WebSocketException as e:
                 self.log_message(f"WebSocket error: {e}")
                 await self._handle_connection_error(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
@@ -1107,12 +1146,30 @@ class AiderVoiceGUI:
 
     async def _handle_connection_error(self, delay):
         """Handle connection errors with exponential backoff"""
-        self.log_message(f"Connection error - attempting reconnect in {delay}s...")
-        await asyncio.sleep(delay)
-        if await self.ws_manager.attempt_reconnect():
-            self.log_message("Successfully reconnected")
-        else:
-            self.log_message("Reconnection failed")
+        try:
+            self.log_message(f"Connection error - attempting reconnect in {delay}s...")
+            await asyncio.sleep(delay)
+            
+            # Close existing connection if any
+            if self.ws:
+                try:
+                    await self.ws.close()
+                except Exception:
+                    pass
+                self.ws = None
+            
+            if await self.ws_manager.attempt_reconnect():
+                self.log_message("Successfully reconnected")
+                # Reset error state
+                self.ws_manager.reconnect_attempts = 0
+                return True
+            else:
+                self.log_message("Reconnection failed")
+                return False
+                
+        except Exception as e:
+            self.log_message(f"Error during reconnection attempt: {e}")
+            return False
 
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
