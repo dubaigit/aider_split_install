@@ -212,6 +212,14 @@ class VoiceCommandProcessor:
         """Validate voice command format and content"""
         if not command:
             return False
+        if len(command) > 1000:  # Prevent overly long commands
+            return False
+        if command.isspace():  # Reject whitespace-only commands
+            return False
+        # Basic profanity check
+        profanity = {'profanity1', 'profanity2'}  # Add actual words as needed
+        if any(word in command.lower() for word in profanity):
+            return False
         return True
 
 
