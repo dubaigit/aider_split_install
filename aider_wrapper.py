@@ -970,100 +970,149 @@ class AiderVoiceGUI:
 
     async def handle_websocket_messages(self):
         """Handle incoming websocket messages, including function calls."""
+        reconnect_delay = 1
+        max_reconnect_delay = 30
+        
         while self.ws and self.recording:
             try:
-                message = await self.ws.recv()
+                message = await asyncio.wait_for(self.ws.recv(), timeout=30)
                 event = json.loads(message)
-                
                 event_type = event.get("type")
                 
+                # Reset reconnect delay on successful message
+                reconnect_delay = 1
+                
                 if event_type == "response.function_call":
-                    try:
-                        function_call = event.get("delta", {}).get("function_call", {})
-                        function_name = function_call.get("name")
-                        arguments = json.loads(function_call.get("arguments", "{}"))
-
-                        if function_name and hasattr(self, function_name):
-                            self.log_message(f"Executing function: {function_name}")
-                            function = getattr(self, function_name)
-                            try:
-                                if asyncio.iscoroutinefunction(function):
-                                    result = await function(**arguments)
-                                else:
-                                    result = function(**arguments)
-
-                                await self.ws.send(json.dumps({
-                                    "type": "function_call.result",
-                                    "name": function_name,
-                                    "result": result
-                                }))
-                            except TypeError as e:
-                                self.log_message(f"Type error executing function {function_name}: {e}")
-                            except ValueError as e:
-                                self.log_message(f"Value error executing function {function_name}: {e}")
-                                await self.ws.send(json.dumps({
-                                    "type": "function_call.error",
-                                    "name": function_name,
-                                    "error": str(e)
-                                }))
-                        else:
-                            self.log_message(f"Unknown function called: {function_name}")
-                    except json.JSONDecodeError as e:
-                        self.log_message(f"Error parsing function arguments: {e}")
-                        continue
-
+                    await self._handle_function_call(event)
                 elif event_type == "response.text.delta":
-                    text = event.get("delta", {}).get("text", "")
-                    if text.strip():
-                        self.update_transcription(text, is_assistant=True)
-
+                    await self._handle_text_delta(event)
                 elif event_type == "input_speech_transcription_completed":
-                    text = event.get("transcription", {}).get("text", "")
-                    self.update_transcription(text, is_assistant=False)
-                    await self.process_voice_command(text)
-
+                    await self._handle_transcription(event)
                 elif event_type == "response.audio.delta":
-                    try:
-                        audio_content = base64.b64decode(event.get('delta', ''))
-                        if audio_content:
-                            self.audio_buffer.extend(audio_content)
-                            self.log_message(f'Received {len(audio_content)} bytes of audio data')
-                    except (TypeError, ValueError) as e:
-                        self.log_message(f"Error processing audio response: {e}")
-
+                    await self._handle_audio_delta(event)
                 elif event_type == "response.audio.done":
-                    self.log_message("AI finished speaking")
-                    self.response_active = False
-
+                    await self._handle_audio_done()
                 elif event_type == "response.done":
-                    self.response_active = False
-                    status = event.get("status")
-                    if status == "incomplete":
-                        reason = event.get("status_details", {}).get("reason", "unknown")
-                        self.log_message(f"🚫 Response incomplete: {reason}")
-                    elif status == "failed":
-                        error = event.get("status_details", {}).get("error", {})
-                        self.log_message(f"⚠️ Response failed: {error.get('code', 'unknown error')}")
-                    else:
-                        self.log_message("Response completed")
-
+                    await self._handle_response_done(event)
                 elif event_type == "error":
-                    error_msg = event.get("error", {}).get("message", "Unknown error")
-                    self.log_message(f"Error from OpenAI: {error_msg}")
-                    if "active response" in error_msg.lower():
-                        self.response_active = True
+                    await self._handle_error_event(event)
+                else:
+                    self.log_message(f"Unhandled event type: {event_type}")
 
-            except websockets.exceptions.ConnectionClosed:
-                self.log_message("WebSocket connection closed")
-                break
+            except asyncio.TimeoutError:
+                self.log_message("WebSocket timeout - checking connection...")
+                if not await self.ws_manager.check_connection():
+                    break
+
+            except websockets.exceptions.ConnectionClosed as e:
+                self.log_message(f"WebSocket connection closed: {e.code} - {e.reason}")
+                if e.code in (1000, 1001):  # Normal closure
+                    break
+                await self._handle_connection_error(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+
             except json.JSONDecodeError as e:
                 self.log_message(f"Error decoding message: {e}")
                 continue
-            except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
+
+            except websockets.exceptions.WebSocketException as e:
                 self.log_message(f"WebSocket error: {e}")
+                await self._handle_connection_error(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+
+            except Exception as e:
+                self.log_message(f"Unexpected error in message handler: {type(e).__name__}: {e}")
                 await asyncio.sleep(1)
-                await self.ws_manager.attempt_reconnect()
                 continue
+
+    async def _handle_function_call(self, event):
+        """Handle function call events"""
+        try:
+            function_call = event.get("delta", {}).get("function_call", {})
+            function_name = function_call.get("name")
+            arguments = json.loads(function_call.get("arguments", "{}"))
+
+            if function_name and hasattr(self, function_name):
+                self.log_message(f"Executing function: {function_name}")
+                function = getattr(self, function_name)
+                try:
+                    if asyncio.iscoroutinefunction(function):
+                        result = await function(**arguments)
+                    else:
+                        result = function(**arguments)
+
+                    await self.ws.send(json.dumps({
+                        "type": "function_call.result",
+                        "name": function_name,
+                        "result": result
+                    }))
+                except (TypeError, ValueError) as e:
+                    self.log_message(f"Error executing {function_name}: {e}")
+                    await self.ws.send(json.dumps({
+                        "type": "function_call.error",
+                        "name": function_name,
+                        "error": str(e)
+                    }))
+            else:
+                self.log_message(f"Unknown function called: {function_name}")
+        except json.JSONDecodeError as e:
+            self.log_message(f"Error parsing function arguments: {e}")
+
+    async def _handle_text_delta(self, event):
+        """Handle text delta events"""
+        text = event.get("delta", {}).get("text", "")
+        if text.strip():
+            self.update_transcription(text, is_assistant=True)
+
+    async def _handle_transcription(self, event):
+        """Handle transcription completed events"""
+        text = event.get("transcription", {}).get("text", "")
+        self.update_transcription(text, is_assistant=False)
+        await self.process_voice_command(text)
+
+    async def _handle_audio_delta(self, event):
+        """Handle audio delta events"""
+        try:
+            audio_content = base64.b64decode(event.get('delta', ''))
+            if audio_content:
+                self.audio_buffer.extend(audio_content)
+                self.log_message(f'Received {len(audio_content)} bytes of audio data')
+        except (TypeError, ValueError) as e:
+            self.log_message(f"Error processing audio response: {e}")
+
+    async def _handle_audio_done(self):
+        """Handle audio done events"""
+        self.log_message("AI finished speaking")
+        self.response_active = False
+
+    async def _handle_response_done(self, event):
+        """Handle response done events"""
+        self.response_active = False
+        status = event.get("status")
+        if status == "incomplete":
+            reason = event.get("status_details", {}).get("reason", "unknown")
+            self.log_message(f"🚫 Response incomplete: {reason}")
+        elif status == "failed":
+            error = event.get("status_details", {}).get("error", {})
+            self.log_message(f"⚠️ Response failed: {error.get('code', 'unknown error')}")
+        else:
+            self.log_message("Response completed")
+
+    async def _handle_error_event(self, event):
+        """Handle error events"""
+        error_msg = event.get("error", {}).get("message", "Unknown error")
+        self.log_message(f"Error from OpenAI: {error_msg}")
+        if "active response" in error_msg.lower():
+            self.response_active = True
+
+    async def _handle_connection_error(self, delay):
+        """Handle connection errors with exponential backoff"""
+        self.log_message(f"Connection error - attempting reconnect in {delay}s...")
+        await asyncio.sleep(delay)
+        if await self.ws_manager.attempt_reconnect():
+            self.log_message("Successfully reconnected")
+        else:
+            self.log_message("Reconnection failed")
 
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
