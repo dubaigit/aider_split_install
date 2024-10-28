@@ -65,7 +65,7 @@ CHUNK_SIZE = 1024  # Smaller chunks for more responsive audio
 SAMPLE_RATE = 24000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
-REENGAGE_DELAY_MS = 500
+REENGAGE_DELAY_MILLISECONDS = 500
 OPENAI_WEBSOCKET_URL = ("wss://api.openai.com/v1/realtime"
                        "?model=gpt-4o-realtime-preview-2024-10-01")
 
@@ -208,7 +208,7 @@ class ClipboardManager:
         self.last_error_time = 0
         self.error_cooldown = 60  # seconds
 
-    def get_current_content(self):
+    def get_clipboard_content(self):
         """Get and process current clipboard content"""
         content = pyperclip.paste()
         content_type = self.detect_content_type(content)
@@ -222,12 +222,12 @@ class ClipboardManager:
             return "url"
         return "text"
 
-    def looks_like_code(self, content):
+    def is_code_content(self, content):
         """Check if content appears to be code"""
         code_indicators = ["def ", "class ", "import ", "function", "{", "}", ";"]
         return any(indicator in content for indicator in code_indicators)
 
-    def looks_like_url(self, content):
+    def is_url_content(self, content):
         """Check if content appears to be a URL"""
         return content.startswith(("http://", "https://", "www."))
 
@@ -360,9 +360,9 @@ class WebSocketManager:
         self.ws = parent.ws
         self.last_error = None
         self.error_time = 0
-        self.connection_latency = 0
+        self.connection_delay = 0
 
-    def get_connection_latency(self):
+    def get_connection_delay(self):
         """Get current connection latency"""
         return self.connection_latency
 
@@ -372,7 +372,7 @@ class WebSocketManager:
             start_time = time.time()
             if self.parent.ws:
                 await self.parent.ws.ping()
-                self.connection_latency = (time.time() - start_time) * 1000
+                self.connection_delay = (time.time() - start_time) * 1000
                 self.last_ping_time = time.time()
                 return True
             return False
@@ -433,9 +433,9 @@ class AiderVoiceGUI:
         self.running = True
         self.fixing_issues = False
         self.mic_active = False
-        self.mic_on_at = 0
+        self.mic_start_time = 0
         self.stop_event = threading.Event()
-        self.log_frequency = 50
+        self.LOG_FREQUENCY = 50
         self.log_counter = 0
 
         # Initialize API clients
