@@ -1756,8 +1756,7 @@ class WebSocketManager:
             return False
 
 
-@classmethod
-def parse_arguments(cls, args=None):
+def parse_arguments(self, args: list[str] | None = None) -> argparse.Namespace:
     """Parse and validate command line arguments.
     
     Args:
@@ -1769,7 +1768,8 @@ def parse_arguments(cls, args=None):
         
     Raises:
         SystemExit: If invalid arguments are provided.
-        ValueError: If argument validation fails.
+        argparse.ArgumentError: If argument validation fails.
+        ValueError: If argument values are invalid.
     """
     parser = argparse.ArgumentParser(
         description="Voice-controlled AI coding assistant with GUI interface",
@@ -1786,7 +1786,8 @@ def parse_arguments(cls, args=None):
     mode_group.add_argument(
         "--gui",
         action="store_true", 
-        help="Launch the graphical user interface"
+        help="Launch the graphical user interface",
+        default=True
     )
     
     # Input source arguments  
@@ -1794,6 +1795,7 @@ def parse_arguments(cls, args=None):
     input_group.add_argument(
         "-i", "--instructions",
         type=str,
+        metavar="FILE",
         help="Path to file containing instructions"
     )
     input_group.add_argument(
@@ -1803,7 +1805,8 @@ def parse_arguments(cls, args=None):
     )
     input_group.add_argument(
         "filenames",
-        nargs="*", 
+        nargs="*",
+        metavar="FILE",
         help="Source code files to process"
     )
     
@@ -1818,7 +1821,8 @@ def parse_arguments(cls, args=None):
     config_group.add_argument(
         "--model",
         type=str,
-        help="OpenAI model to use (default: gpt-4)"
+        default="gpt-4",
+        help="OpenAI model to use"
     )
     config_group.add_argument(
         "--suggest-shell-commands",
@@ -1831,22 +1835,44 @@ def parse_arguments(cls, args=None):
         help="Enable automatic issue fixing (GUI mode only)"
     )
 
-    # Parse and validate arguments
-    parsed_args = parser.parse_args(args)
-    
-    # Validate argument combinations
-    if parsed_args.auto and not parsed_args.gui:
-        parser.error("--auto requires --gui mode")
+    try:
+        # Parse arguments
+        parsed_args = parser.parse_args(args)
         
-    if parsed_args.instructions and not os.path.exists(parsed_args.instructions):
-        parser.error(f"Instructions file not found: {parsed_args.instructions}")
-        
-    if parsed_args.filenames:
-        missing = [f for f in parsed_args.filenames if not os.path.exists(f)]
-        if missing:
-            parser.error(f"Source files not found: {', '.join(missing)}")
+        # Validate argument combinations
+        if parsed_args.auto and not parsed_args.gui:
+            parser.error("--auto requires --gui mode")
             
-    return parsed_args
+        if parsed_args.voice_only and parsed_args.gui:
+            parser.error("Cannot use both --voice-only and --gui modes")
+            
+        # Validate file paths
+        if parsed_args.instructions:
+            if not os.path.isfile(parsed_args.instructions):
+                raise ValueError(f"Instructions file not found: {parsed_args.instructions}")
+            if not os.access(parsed_args.instructions, os.R_OK):
+                raise ValueError(f"Instructions file not readable: {parsed_args.instructions}")
+                
+        if parsed_args.filenames:
+            for filename in parsed_args.filenames:
+                if not os.path.isfile(filename):
+                    raise ValueError(f"Source file not found: {filename}")
+                if not os.access(filename, os.R_OK):
+                    raise ValueError(f"Source file not readable: {filename}")
+                    
+        # Store validated arguments
+        self.args = parsed_args
+        return parsed_args
+        
+    except argparse.ArgumentError as e:
+        self.log_message(f"Error parsing arguments: {e}")
+        raise
+    except ValueError as e:
+        self.log_message(f"Error validating arguments: {e}")
+        raise
+    except Exception as e:
+        self.log_message(f"Unexpected error parsing arguments: {e}")
+        raise
 
 def main():
     """Main entry point for the Aider Voice Assistant"""
