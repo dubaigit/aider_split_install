@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import time
+import tkinter as tk
 import unittest
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
