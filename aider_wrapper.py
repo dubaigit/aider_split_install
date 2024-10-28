@@ -1363,49 +1363,76 @@ class TestVoiceCommandProcessor(AsyncTestCase):
         self.parent = MagicMock()
         self.processor = VoiceCommandProcessor(self.parent)
 
-    async def test_validate_command_empty(self):
+    def test_validate_command_empty(self):
         """Test validation of empty commands"""
         self.assertFalse(self.processor.validate_command(""))
         self.assertFalse(self.processor.validate_command(None))
         self.assertFalse(self.processor.validate_command("   "))
 
-    async def test_validate_command_length(self):
+    def test_validate_command_length(self):
         """Test validation of command length"""
         # Test command that exceeds max length
         long_command = "a" * 1001
-        self.assertFalse(self.processor.validate_command(long_command))
+        self.assertFalse(self.processor.validate_command(long_command),
+                        "Should reject commands longer than 1000 chars")
         
         # Test command at max length
         valid_command = "a" * 1000
-        self.assertTrue(self.processor.validate_command(valid_command))
+        self.assertTrue(self.processor.validate_command(valid_command),
+                       "Should accept commands at max length")
         
         # Test normal length command
-        self.assertTrue(self.processor.validate_command("normal command"))
+        self.assertTrue(self.processor.validate_command("normal command"),
+                       "Should accept normal length commands")
 
-    async def test_validate_command_profanity(self):
+    def test_validate_command_profanity(self):
         """Test validation of command content"""
         # Test commands with profanity
-        self.assertFalse(self.processor.validate_command("profanity1 test"))
-        self.assertFalse(self.processor.validate_command("test profanity2"))
+        self.assertFalse(self.processor.validate_command("profanity1 test"),
+                        "Should reject commands with profanity1")
+        self.assertFalse(self.processor.validate_command("test profanity2"),
+                        "Should reject commands with profanity2")
         
         # Test normal commands
-        self.assertTrue(self.processor.validate_command("normal command"))
-        self.assertTrue(self.processor.validate_command("hello world"))
-        self.assertTrue(self.processor.validate_command("test case"))
+        self.assertTrue(self.processor.validate_command("normal command"),
+                       "Should accept normal commands")
+        self.assertTrue(self.processor.validate_command("hello world"),
+                       "Should accept greetings")
+        self.assertTrue(self.processor.validate_command("test case"),
+                       "Should accept test commands")
 
 class TestArgumentParsing(unittest.TestCase):
     """Test command line argument parsing"""
 
+    @classmethod
+    def setUpClass(cls):
+        """Set up test environment once for all tests"""
+        cls.original_parser = AiderVoiceGUI._parser if hasattr(AiderVoiceGUI, '_parser') else None
+
     def setUp(self):
-        """Set up test environment"""
+        """Set up test environment for each test"""
         self.parser_patcher = patch('argparse.ArgumentParser')
         self.mock_parser = self.parser_patcher.start()
         self.mock_args = MagicMock()
         self.mock_parser.return_value.parse_args.return_value = self.mock_args
+        
+        # Save any existing error handlers
+        self.original_error_handler = self.mock_parser.return_value.error \
+            if hasattr(self.mock_parser.return_value, 'error') else None
 
     def tearDown(self):
-        """Clean up test environment"""
+        """Clean up test environment after each test"""
         self.parser_patcher.stop()
+        
+        # Restore original error handler if any
+        if self.original_error_handler:
+            self.mock_parser.return_value.error = self.original_error_handler
+
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up class-level test environment"""
+        if cls.original_parser:
+            AiderVoiceGUI._parser = cls.original_parser
 
     def test_default_arguments(self):
         """Test default argument values"""
@@ -1504,8 +1531,8 @@ class TestGUIEventHandlers(AsyncTestCase):
         """Clean up test environment"""
         self.root.destroy()
 
-    async def test_keyboard_shortcuts(self):
-        """Test keyboard shortcut bindings and handlers with async support"""
+    def test_keyboard_shortcuts(self):
+        """Test keyboard shortcut bindings and handlers"""
         # Create mock event
         event = type('Event', (), {'widget': None})()
         
@@ -1520,18 +1547,23 @@ class TestGUIEventHandlers(AsyncTestCase):
 
         for key, method_name in shortcuts.items():
             with patch.object(self.app, method_name) as mock_method:
+                # Simulate key press
                 self.app.root.event_generate(key)
-                await asyncio.sleep(0.1)  # Allow event processing
+                self.root.update_idletasks()
                 self.root.update()
-                mock_method.assert_called_once()
+                
+                # Verify method was called
+                mock_method.assert_called_once_with(),\
+                    f"Shortcut {key} should trigger {method_name}"
                 mock_method.reset_mock()
 
-        # Test invalid shortcut
+        # Test invalid shortcut doesn't trigger anything
         with patch.object(self.app, 'log_message') as mock_log:
             self.app.root.event_generate('<Control-x>')
-            await asyncio.sleep(0.1)
+            self.root.update_idletasks()
             self.root.update()
-            mock_log.assert_not_called()
+            mock_log.assert_not_called(),\
+                "Invalid shortcut should not trigger any logging"
 
 
 class ClipboardManager:
