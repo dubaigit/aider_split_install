@@ -1504,18 +1504,22 @@ class WebSocketManager:
         self.monitoring_task = None
         self.log_message = parent.log_message
         self.ws = parent.ws
+        self.last_error = None
+        self.error_time = 0
         # Define valid state transitions with reasons
         self._state_transitions = {
             ConnectionState.DISCONNECTED: {
                 ConnectionState.CONNECTING: "Initial connection attempt",
                 ConnectionState.FAILED: "Connection initialization failed",
-                ConnectionState.ERROR: "Unexpected error during initialization"
+                ConnectionState.ERROR: "Unexpected error during initialization",
+                ConnectionState.RECONNECTING: "Attempting to restore connection"
             },
             ConnectionState.CONNECTING: {
                 ConnectionState.CONNECTED: "Connection established successfully", 
                 ConnectionState.FAILED: "Connection attempt failed",
                 ConnectionState.ERROR: "Error during connection attempt",
-                ConnectionState.DISCONNECTED: "Connection attempt cancelled"
+                ConnectionState.DISCONNECTED: "Connection attempt cancelled",
+                ConnectionState.RECONNECTING: "Retrying connection"
             },
             ConnectionState.CONNECTED: {
                 ConnectionState.CLOSING: "Connection closing normally",
@@ -1537,8 +1541,10 @@ class WebSocketManager:
             },
             ConnectionState.ERROR: {
                 ConnectionState.CONNECTING: "Attempting recovery from error",
-                ConnectionState.DISCONNECTED: "Shutting down after error",
-                ConnectionState.FAILED: "Error recovery failed"
+                ConnectionState.DISCONNECTED: "Shutting down after error", 
+                ConnectionState.FAILED: "Error recovery failed",
+                ConnectionState.RECONNECTING: "Retrying after error",
+                ConnectionState.CONNECTED: "Error resolved successfully"
             },
             ConnectionState.CLOSING: {
                 ConnectionState.DISCONNECTED: "Connection closed normally",
@@ -1569,16 +1575,23 @@ class WebSocketManager:
                     f"Valid transitions are:\n" + "\n".join(f"- {t}" for t in valid_transitions)
                 )
 
+            # Track error state
+            if new_state == ConnectionState.ERROR:
+                self.last_error = transition_reason
+                self.error_time = time.time()
+            
             # Get transition reason and update state
             transition_reason = self._state_transitions[self._state][new_state]
             self._state = new_state
 
-            # Reset reconnection attempts on successful connection
+            # Handle connection state changes
             if new_state == ConnectionState.CONNECTED:
                 self.reconnect_attempts = 0
-            # Increment reconnection attempts on reconnecting
+                self.last_error = None
             elif new_state == ConnectionState.RECONNECTING:
                 self.reconnect_attempts += 1
+                if self.reconnect_attempts > self.max_reconnect_attempts:
+                    raise ValueError("Maximum reconnection attempts exceeded")
 
             # Log state change with appropriate emoji and color
             emoji_map = {
