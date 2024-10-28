@@ -174,8 +174,29 @@ Options:
   --help, -h         Show this help message
 ```
 
-## Running with Custom Instructions
+## Running Methods
 
+### Global Binary Access (macOS)
+```bash
+# Install globally
+sudo aider_split --setup-bin
+
+# This creates a symlink in /usr/local/bin
+# Now you can run from anywhere:
+aider_split --max-concurrent 5 file1.py file2.py
+```
+
+### Direct File Path Usage
+You can run aider_split using the full path without installation:
+```bash
+# Using full path
+/path/to/aider_split.py --max-concurrent 5 file1.py file2.py
+
+# Or with python directly
+python3 /path/to/aider_split.py --max-concurrent 5 file1.py file2.py
+```
+
+### Running with Custom Instructions
 You can run aider_split directly with custom instructions without installing it globally. This is useful for one-off tasks or testing. Here's an example workflow:
 
 1. **Create Custom Instructions**:
