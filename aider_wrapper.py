@@ -40,6 +40,9 @@ class WebSocketTimeoutError(WebSocketConnectionError):
 class WebSocketAuthenticationError(WebSocketConnectionError):
     """Custom exception for WebSocket authentication errors"""
 
+class AuthenticationError(WebSocketConnectionError):
+    """Custom exception for authentication failures"""
+
 class StateError(Exception):
     """Custom exception for state-related errors"""
 
@@ -876,7 +879,7 @@ class AiderVoiceGUI:
             return True
 
         except websockets.exceptions.InvalidStatusCode as e:
-            error = AuthenticationError(f"Authentication failed with status {e.status_code}")
+            error = WebSocketAuthenticationError(f"Authentication failed with status {e.status_code}")
             self.error_processor.process_error(error, "websocket")
             self.ws_manager.connection_state = ConnectionState.FAILED
             raise error
