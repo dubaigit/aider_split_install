@@ -28,20 +28,8 @@ from test_utils import (
     AsyncMock
 )
 
-class AsyncTestCase(unittest.TestCase):
+class AsyncTestCase(unittest.IsolatedAsyncioTestCase):
     """Base class for async tests with enhanced async support"""
-
-    def setUp(self):
-        """Set up test environment with proper async context"""
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.addCleanup(self.cleanup_loop)
-
-    def cleanup_loop(self):
-        """Clean up the event loop"""
-        self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-        self.loop.close()
-        asyncio.set_event_loop(None)
 
     async def asyncSetUp(self):
         """Optional async setup - override in subclasses"""
@@ -51,22 +39,17 @@ class AsyncTestCase(unittest.TestCase):
         """Optional async teardown - override in subclasses"""
         pass
 
-    def run_async_test(self, coro):
-        """Run coroutine in the test loop with enhanced error handling and timeout"""
-        async def _run_with_setup():
-            await self.asyncSetUp()
-            try:
-                result = await asyncio.wait_for(coro, timeout=5.0)
-                return result
-            except asyncio.TimeoutError:
-                self.fail("Async test timed out after 5 seconds")
-            finally:
-                await self.asyncTearDown()
-
+    async def run_async_test(self, coro):
+        """Run coroutine with enhanced error handling and timeout"""
+        await self.asyncSetUp()
         try:
-            return self.loop.run_until_complete(_run_with_setup())
+            return await asyncio.wait_for(coro, timeout=5.0)
+        except asyncio.TimeoutError:
+            self.fail("Async test timed out after 5 seconds")
         except Exception as e:
-            self.fail(f"Async test failed with error: {type(e).__name__}: {str(e)}\n{e.__traceback__}")
+            self.fail(f"Async test failed with error: {type(e).__name__}: {str(e)}")
+        finally:
+            await self.asyncTearDown()
 
     @contextmanager
     def assertNotRaises(self, exc_type):
@@ -230,96 +213,62 @@ class AsyncMock(MagicMock):
 
 
     @patch('websockets.connect', new_callable=AsyncMock)
-    def test_connect_websocket_failure(self, mock_connect):
-        """Test websocket connection failure handling"""
+    async def test_websocket_connection_scenarios(self, mock_connect):
+        """Test various WebSocket connection scenarios"""
+        # Test connection failure
         mock_connect.side_effect = Exception("Connection failed")
-
-        async def run_test():
-            result = await self.app.connect_websocket()
-            self.assertFalse(result)
-            self.assertIsNone(self.app.ws)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(run_test())
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
-
-    @patch('websockets.connect', new_callable=AsyncMock)
-    async def test_websocket_timeout(self, mock_connect):
-        """Test websocket timeout handling"""
+        result = await self.app.connect_websocket()
+        self.assertFalse(result)
+        self.assertIsNone(self.app.ws)
+        
+        # Test timeout
+        mock_connect.side_effect = None
         mock_ws = AsyncMock()
         mock_ws.send = AsyncMock(side_effect=asyncio.TimeoutError())
         mock_connect.return_value = mock_ws
-
-        async def run_test():
-            result = await self.app.connect_websocket()
-            self.assertFalse(result)
-
-        await run_async_test(run_test())
-
-    @patch('websockets.connect', new_callable=AsyncMock)
-    async def test_websocket_close(self, mock_connect):
-        """Test websocket close handling"""
-        mock_ws = AsyncMock()
-        mock_ws.send = AsyncMock()
-        mock_ws.close = AsyncMock()
-        mock_connect.return_value = mock_ws
-
         result = await self.app.connect_websocket()
-        self.assertTrue(result)
-        await self.app.ws.close()
-        mock_ws.close.assert_called_once()
-        """Test websocket connection and message handling"""
-        # Create async mock for websocket with proper boolean behavior
+        self.assertFalse(result)
+        
+        # Test successful connection and message handling
         mock_ws = AsyncMock()
         mock_ws.send = AsyncMock()
         mock_ws.ping = AsyncMock()
-        mock_ws.side_effect = lambda: True
+        mock_ws.close = AsyncMock()
         mock_connect.return_value = mock_ws
-
-        async def run_test():
-            # Start message handling tasks
-            message_task = asyncio.create_task(self.app.handle_websocket_messages())
-            queue_task = asyncio.create_task(self.app.process_audio_queue())
-
-            try:
-                result = await self.app.connect_websocket()
-                self.assertTrue(result)
-                self.assertEqual(self.app.ws, mock_ws)
-                
-                # Verify session.update was sent with correct data
-                mock_ws.send.assert_called_once()
-                call_args = mock_ws.send.call_args[0][0]
-                self.assertIn("session.update", call_args)
-                self.assertIn("model", call_args)
-                
-                # Additional assertions to verify connection state
-                self.assertTrue(self.app.ws is not None)
-                self.assertFalse(self.app.response_active)
-                self.assertIsNone(self.app.last_transcript_id)
-                self.assertEqual(len(self.app.audio_buffer), 0)
-                
-            finally:
-                # Clean up tasks
-                message_task.cancel()
-                queue_task.cancel()
-                try:
-                    await message_task
-                    await queue_task
-                except asyncio.CancelledError:
-                    pass
-
-        # Create and run event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        
+        # Start message handling tasks
+        message_task = asyncio.create_task(self.app.handle_websocket_messages())
+        queue_task = asyncio.create_task(self.app.process_audio_queue())
+        
         try:
-            loop.run_until_complete(run_test())
+            result = await self.app.connect_websocket()
+            self.assertTrue(result)
+            self.assertEqual(self.app.ws, mock_ws)
+            
+            # Verify session.update was sent
+            mock_ws.send.assert_called_once()
+            call_args = mock_ws.send.call_args[0][0]
+            self.assertIn("session.update", call_args)
+            self.assertIn("model", call_args)
+            
+            # Test connection state
+            self.assertIsNotNone(self.app.ws)
+            self.assertFalse(self.app.response_active)
+            self.assertIsNone(self.app.last_transcript_id)
+            self.assertEqual(len(self.app.audio_buffer), 0)
+            
+            # Test close
+            await self.app.ws.close()
+            mock_ws.close.assert_called_once()
+            
         finally:
-            loop.close()
-            asyncio.set_event_loop(None)
+            # Clean up tasks
+            message_task.cancel()
+            queue_task.cancel()
+            try:
+                await asyncio.gather(message_task, queue_task, return_exceptions=True)
+            except asyncio.CancelledError:
+                pass
 
 class TestAudioBufferManager(unittest.TestCase):
     """Test suite for audio buffer management functionality"""
