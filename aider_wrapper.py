@@ -1,18 +1,8 @@
 """Main module for Aider Voice Assistant."""
 
-from aider_voice.core.audio import AudioBufferManager, CHUNK_SIZE, SAMPLE_RATE, CHANNELS, FORMAT, REENGAGE_DELAY_MS
-from aider_voice.core.performance import PerformanceMonitor
-from aider_voice.core.websocket import WebSocketManager, ConnectionState, OPENAI_WEBSOCKET_URL
-from aider_voice.core.clipboard import ClipboardManager
-from aider_voice.gui.keyboard import KeyboardShortcuts
-from aider_voice.gui.file_manager import FileManager
-
 # Standard library imports
 import argparse
 import asyncio
-import unittest
-from .exceptions import *
-from unittest.mock import patch, MagicMock
 import base64
 import json
 import os
@@ -20,6 +10,7 @@ import threading
 import time
 from contextlib import contextmanager
 from queue import Empty as QueueEmpty, Queue
+from enum import Enum, auto
 
 # GUI imports
 import tkinter as tk
@@ -27,10 +18,32 @@ from tkinter import filedialog, scrolledtext, ttk
 
 # Third-party imports
 import pyaudio
-from websockets.exceptions import (
-    WebSocketException,
-    InvalidStatusCode
-)
+from websockets.exceptions import WebSocketException
+
+# Custom exceptions
+class AudioProcessingError(Exception):
+    """Custom exception for audio processing errors"""
+
+class WebSocketConnectionError(Exception):
+    """Custom exception for WebSocket connection errors"""
+    def __init__(self, message, original_error=None):
+        super().__init__(message)
+        self.original_error = original_error
+
+class WebSocketTimeoutError(WebSocketConnectionError):
+    """Custom exception for WebSocket timeout errors"""
+
+class WebSocketAuthenticationError(WebSocketConnectionError):
+    """Custom exception for WebSocket authentication errors"""
+
+class StateError(Exception):
+    """Custom exception for state-related errors"""
+
+class ValidationError(Exception):
+    """Custom exception for validation errors"""
+
+class AudioError(Exception):
+    """Custom exception for audio-related errors"""
 
 # Optional third-party imports with fallbacks
 try:
@@ -48,17 +61,13 @@ except ImportError:
 try:
     import pyperclip
 except ImportError:
-    print(
-        "Warning: pyperclip module not found. Clipboard functionality will be disabled."
-    )
+    print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
     pyperclip = None
 
 try:
     import sounddevice as sd
 except ImportError:
-    print(
-        "Warning: sounddevice module not found. Voice functionality will be disabled."
-    )
+    print("Warning: sounddevice module not found. Voice functionality will be disabled.")
     sd = None
 
 try:
@@ -66,7 +75,6 @@ try:
 except ImportError:
     print("Warning: websockets module not found. Voice functionality will be disabled.")
     websockets = None
-
 
 # Audio settings
 CHUNK_SIZE = 1024  # Smaller chunks for more responsive audio
@@ -78,6 +86,15 @@ OPENAI_WEBSOCKET_URL = (
     "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
 )
 
+class ConnectionState(Enum):
+    """Enum for WebSocket connection states"""
+    DISCONNECTED = auto()
+    CONNECTING = auto()
+    CONNECTED = auto()
+    RECONNECTING = auto()
+    FAILED = auto()
+    ERROR = auto()
+    CLOSING = auto()
 
 class AudioBufferManager:
     """Manages audio buffering and processing"""
@@ -115,7 +132,6 @@ class AudioBufferManager:
     def get_usage(self):
         """Get current buffer usage ratio"""
         return len(self.buffer) / self.max_size
-
 
 class PerformanceMonitor:
     """Monitors and reports performance metrics"""
@@ -155,7 +171,6 @@ class PerformanceMonitor:
             duration = time.time() - start
             self.update(metric, duration)
 
-
 class KeyboardShortcuts:
     """Manages keyboard shortcuts"""
 
@@ -176,108 +191,6 @@ class KeyboardShortcuts:
         for key, func in shortcuts.items():
             self.parent.root.bind(key, lambda e, f=func: f())
 
-
-# Using exceptions from exceptions.py instead
-
-
-class FileManager:
-    """Manages file operations and tracking"""
-    
-    def __init__(self, parent):
-        self.parent = parent
-        self.watched_files = {}
-        self.file_hashes = {}
-        self.last_modified = {}
-        self._lock = threading.Lock()
-        
-    def add_file(self, filepath):
-        """Add a file to be tracked"""
-        try:
-            if not os.path.exists(filepath):
-                raise FileNotFoundError(f"File not found: {filepath}")
-                
-            if not os.access(filepath, os.R_OK):
-                raise PermissionError(f"No read permission: {filepath}")
-                
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            with self._lock:
-                self.watched_files[filepath] = content
-                self.file_hashes[filepath] = hash(content)
-                self.last_modified[filepath] = os.path.getmtime(filepath)
-                
-            return True
-            
-        except Exception as e:
-            self.parent.log_message(f"❌ Error adding file {filepath}: {str(e)}")
-            return False
-            
-    def remove_file(self, filepath):
-        """Remove a file from tracking"""
-        with self._lock:
-            self.watched_files.pop(filepath, None)
-            self.file_hashes.pop(filepath, None)
-            self.last_modified.pop(filepath, None)
-            
-    def check_for_changes(self):
-        """Check if any tracked files have changed"""
-        changed_files = []
-        with self._lock:
-            for filepath in list(self.watched_files.keys()):
-                try:
-                    if not os.path.exists(filepath):
-                        self.parent.log_message(f"⚠️ File no longer exists: {filepath}")
-                        self.remove_file(filepath)
-                        continue
-                        
-                    current_mtime = os.path.getmtime(filepath)
-                    if current_mtime != self.last_modified[filepath]:
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            new_content = f.read()
-                            new_hash = hash(new_content)
-                            
-                        if new_hash != self.file_hashes[filepath]:
-                            changed_files.append(filepath)
-                            self.watched_files[filepath] = new_content
-                            self.file_hashes[filepath] = new_hash
-                            self.last_modified[filepath] = current_mtime
-                            
-                except Exception as e:
-                    self.parent.log_message(f"❌ Error checking file {filepath}: {str(e)}")
-                    
-        return changed_files
-        
-    def get_content(self, filepath):
-        """Get current content of a tracked file"""
-        with self._lock:
-            return self.watched_files.get(filepath)
-            
-    def backup_files(self, backup_dir='.backup'):
-        """Create backups of all tracked files"""
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
-            
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        backup_files = []
-        
-        with self._lock:
-            for filepath in self.watched_files:
-                try:
-                    backup_name = f"{os.path.basename(filepath)}.{timestamp}"
-                    backup_path = os.path.join(backup_dir, backup_name)
-                    
-                    with open(filepath, 'r', encoding='utf-8') as src:
-                        with open(backup_path, 'w', encoding='utf-8') as dst:
-                            dst.write(src.read())
-                            
-                    backup_files.append(backup_path)
-                    
-                except Exception as e:
-                    self.parent.log_message(f"❌ Error backing up {filepath}: {str(e)}")
-                    
-        return backup_files
-
 class ResultProcessor:
     """Processes and manages results from various operations"""
 
@@ -287,11 +200,16 @@ class ResultProcessor:
 
     def process_result(self, result, source):
         """Process a result from any operation"""
-        self.results.append(
-            {"timestamp": time.time(), "result": result, "source": source}
-        )
+        self.results.append({
+            "timestamp": time.time(),
+            "result": result,
+            "source": source
+        })
         return result
 
+    def get_latest_result(self):
+        """Get the most recent result"""
+        return self.results[-1] if self.results else None
 
 class ErrorProcessor:
     """Processes and manages errors from various operations"""
@@ -302,11 +220,18 @@ class ErrorProcessor:
 
     def process_error(self, error, source):
         """Process an error from any operation"""
-        error_entry = {"timestamp": time.time(), "error": str(error), "source": source}
+        error_entry = {
+            "timestamp": time.time(),
+            "error": str(error),
+            "source": source
+        }
         self.errors.append(error_entry)
         self.parent.log_message(f"Error in {source}: {error}")
         return error_entry
 
+    def get_latest_error(self):
+        """Get the most recent error"""
+        return self.errors[-1] if self.errors else None
 
 class VoiceCommandProcessor:
     """Processes and manages voice commands"""
@@ -314,6 +239,7 @@ class VoiceCommandProcessor:
     def __init__(self, parent):
         self.parent = parent
         self.commands = []
+        self.command_history = []
 
     def preprocess_command(self, command):
         """Clean and normalize voice command"""
@@ -333,177 +259,54 @@ class VoiceCommandProcessor:
             return False
         return True
 
+    def add_to_history(self, command, status="pending"):
+        """Add command to history with status"""
+        self.command_history.append({
+            "command": command,
+            "timestamp": time.time(),
+            "status": status
+        })
+
+class WebSocketManager:
+    """Manages WebSocket connection state and monitoring"""
+
+    def __init__(self, parent):
+        self.parent = parent
+        self._state = ConnectionState.DISCONNECTED
+        self.last_ping_time = 0
+        self.ping_interval = 30
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.monitoring_task = None
+        self.log_message = parent.log_message
+        self.ws = parent.ws
+        self.last_error = None
+        self.error_time = 0
+        self.connection_latency = 0
+
+    def get_connection_latency(self):
+        """Get current connection latency"""
+        return self.connection_latency
+
+    async def check_connection(self):
+        """Check connection health with ping"""
+        try:
+            start_time = time.time()
+            if self.parent.ws:
+                await self.parent.ws.ping()
+                self.connection_latency = (time.time() - start_time) * 1000
+                self.last_ping_time = time.time()
+                return True
+            return False
+        except Exception as e:
+            self.log_message(f"Connection check failed: {e}")
+            return False
 
 class AiderVoiceGUI:
-    """A voice-controlled graphical interface for the Aider code assistant.
-    
-    This class provides a GUI wrapper around Aider with voice control capabilities,
-    allowing users to interact with Aider through voice commands and a graphical interface.
-    It handles audio processing, WebSocket communication with OpenAI's API, and provides
-    visual feedback through various GUI components.
-
-    Key Features:
-    - Voice command processing and transcription
-    - Real-time audio streaming to OpenAI's API
-    - GUI components for file management and issue tracking
-    - Clipboard integration for code sharing
-    - Asynchronous WebSocket communication
-    - Performance monitoring and error handling
-    """
-
-    _parser = None
-
-    @classmethod
-    def get_parser(cls):
-        """Get or create the argument parser singleton.
-        
-        Returns:
-            argparse.ArgumentParser: The argument parser instance
-        """
-        if cls._parser is None:
-            cls._parser = argparse.ArgumentParser(
-                description="Aider Voice Assistant - Voice-controlled coding assistant",
-                formatter_class=argparse.ArgumentDefaultsHelpFormatter
-            )
-            
-            # Create argument groups for better organization
-            voice_group = cls._parser.add_argument_group('Voice Control Options')
-            input_group = cls._parser.add_argument_group('Input Options')
-            behavior_group = cls._parser.add_argument_group('Behavior Options')
-            interface_group = cls._parser.add_argument_group('Interface Options')
-            
-            # Voice control options
-            voice_group.add_argument(
-                "--voice-only",
-                action="store_true",
-                help="Run in voice-only mode without GUI"
-            )
-            voice_group.add_argument(
-                "--voice-model",
-                default="whisper-1",
-                help="OpenAI Whisper model to use for voice recognition"
-            )
-            
-            # Input options
-            input_group.add_argument(
-                "-i", "--instructions",
-                help="Path to file containing initial instructions"
-            )
-            input_group.add_argument(
-                "-c", "--clipboard",
-                action="store_true",
-                help="Monitor clipboard for content"
-            )
-            input_group.add_argument(
-                "filenames",
-                nargs="*",
-                type=str,
-                help="Files to edit (must exist and be readable)"
-            )
-            
-            # Behavior options
-            behavior_group.add_argument(
-                "--chat-mode",
-                choices=["code", "ask"],
-                default="code",
-                help="Chat interaction mode"
-            )
-            behavior_group.add_argument(
-                "--suggest-shell-commands",
-                action="store_true",
-                help="Suggest shell commands for actions"
-            )
-            behavior_group.add_argument(
-                "--model",
-                default="gpt-4",
-                choices=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
-                help="OpenAI GPT model to use for chat"
-            )
-            behavior_group.add_argument(
-                "--api-key",
-                help="OpenAI API key (can also use OPENAI_API_KEY env var)"
-            )
-            behavior_group.add_argument(
-                "--temperature",
-                type=float,
-                default=0.7,
-                choices=[i/10.0 for i in range(0, 11)],
-                help="Temperature for model responses (0.0-1.0)"
-            )
-            behavior_group.add_argument(
-                "--max-tokens",
-                type=int,
-                default=2000,
-                help="Maximum tokens per response"
-            )
-            
-            # Interface options
-            interface_group.add_argument(
-                "--gui",
-                action="store_true",
-                help="Run with graphical interface"
-            )
-            interface_group.add_argument(
-                "--auto",
-                action="store_true",
-                help="Run in automatic mode"
-            )
-            interface_group.add_argument(
-                "--verbose",
-                action="store_true", 
-                help="Enable verbose logging"
-            )
-
-        return cls._parser
-
-    @classmethod
-    def parse_arguments(cls, args=None):
-        """Parse command line arguments for the Aider Voice Assistant.
-
-        Args:
-            args (Optional[List[str]]): Command line arguments to parse. If None, defaults
-                to sys.argv[1:].
-
-        Returns:
-            argparse.Namespace: Parsed command line arguments
-
-        Raises:
-            SystemExit: If invalid arguments are provided or --help is used
-        """
-        parser = cls.get_parser()
-        
-        parsed_args = parser.parse_args(args)
-        
-        # Validate arguments
-        if parsed_args.voice_only and parsed_args.gui:
-            parser.error("Cannot use --voice-only with --gui")
-            
-        if parsed_args.instructions and not os.path.exists(parsed_args.instructions):
-            parser.error(f"Instructions file not found: {parsed_args.instructions}")
-            
-        for filename in parsed_args.filenames:
-            if not os.path.exists(filename):
-                parser.error(f"File not found: {filename}")
-                
-        if parsed_args.max_tokens < 1:
-            parser.error("Max tokens must be positive")
-
-        # Validate files exist and are readable
-        for filename in parsed_args.filenames:
-            try:
-                with open(filename, 'r') as f:
-                    pass
-            except (IOError, OSError) as e:
-                parser.error(f"Cannot read file '{filename}': {e}")
-
-        # Check for API key in args or environment
-        if not parsed_args.api_key and not os.getenv('OPENAI_API_KEY'):
-            parser.error("OpenAI API key must be provided via --api-key or OPENAI_API_KEY environment variable")
-
-        return parsed_args
+    """Main GUI class for the voice assistant"""
 
     def __init__(self, root):
-        """Initialize the AiderVoiceGUI with all required attributes."""
+        """Initialize the AiderVoiceGUI."""
         # Store root window
         self.root = root
         self.root.title("Aider Voice Assistant")
@@ -521,33 +324,20 @@ class AiderVoiceGUI:
             "command_history": [],  # Track command history
         }
 
-        # GUI components
-        self.main_frame = None
-        self.left_panel = None
-        self.control_frame = None
-        self.status_label = None
-        self.add_files_button = None
-        self.check_issues_button = None
-        self.files_frame = None
-        self.files_listbox = None
-        self.remove_file_button = None
-        self.input_frame = None
-        self.input_text = None
-        self.clipboard_button = None
-        self.send_button = None
-        self.right_panel = None
-        self.transcription_frame = None
-        self.transcription_text = None
-        self.issues_frame = None
-        self.issues_text = None
-        self.log_frame = None
-        self.output_text = None
+        # Initialize components
+        self.init_components()
 
-        # Queue components
+        # Setup GUI if enabled
+        if self.args.gui:
+            self.setup_gui()
+
+    def init_components(self):
+        """Initialize all components"""
+        # Initialize queues
         self.mic_queue = Queue()
         self.audio_queue = Queue()
 
-        # Audio components
+        # Initialize audio components
         self.audio_buffer = bytearray()
         self.mic_stream = None
         self.spkr_stream = None
@@ -556,7 +346,7 @@ class AiderVoiceGUI:
         self.audio_thread = None
         self.p = pyaudio.PyAudio()
 
-        # State tracking
+        # Initialize state tracking
         self.response_active = False
         self.last_transcript_id = None
         self.last_audio_time = time.time()
@@ -570,13 +360,13 @@ class AiderVoiceGUI:
         self.log_frequency = 50
         self.log_counter = 0
 
-        # API clients
+        # Initialize API clients
         self.client = OpenAI() if OpenAI else None
         self.ws = None
         self.aider_process = None
         self.temp_files = []
 
-        # Async components
+        # Initialize async components
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
 
@@ -585,22 +375,44 @@ class AiderVoiceGUI:
         self.result_processor = ResultProcessor(self)
         self.error_processor = ErrorProcessor(self)
         self.ws_manager = WebSocketManager(self)
-        self.file_manager = FileManager(self)
         self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
         self.keyboard_shortcuts = KeyboardShortcuts(self)
 
         # Start async thread
         self.thread.start()
 
-        # Setup GUI components last if enabled
-        if self.args.gui:
-            self.setup_gui()
+    @classmethod
+    def get_parser(cls):
+        """Get argument parser"""
+        if not hasattr(cls, '_parser'):
+            cls._parser = argparse.ArgumentParser(
+                description="Aider Voice Assistant",
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter
+            )
+            # Add arguments here...
+        return cls._parser
 
-    def log_message(self, message):
-        """Log a message to the output text area"""
-        if hasattr(self, 'output_text'):
-            self.output_text.insert(tk.END, f"{message}\n")
-            self.output_text.see(tk.END)
+    @classmethod
+    def parse_arguments(cls, args=None):
+        """Parse command line arguments"""
+        parser = cls.get_parser()
+        parsed_args = parser.parse_args(args)
+        
+        # Validate arguments
+        if parsed_args.voice_only and parsed_args.gui:
+            parser.error("Cannot use --voice-only with --gui")
+            
+        if parsed_args.instructions and not os.path.exists(parsed_args.instructions):
+            parser.error(f"Instructions file not found: {parsed_args.instructions}")
+            
+        for filename in parsed_args.filenames:
+            try:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    f.read()
+            except (IOError, OSError) as e:
+                parser.error(f"Cannot read file '{filename}': {e}")
+
+        return parsed_args
 
     def browse_files(self):
         """Open file browser dialog to select files"""
@@ -610,11 +422,11 @@ class AiderVoiceGUI:
                 if not os.path.exists(file):
                     self.log_message(f"⚠️ File not found: {file}")
                     continue
-                    
+
                 if not os.access(file, os.R_OK):
                     self.log_message(f"⚠️ No read permission: {file}")
                     continue
-                    
+
                 if file not in self.interface_state['files']:
                     try:
                         with open(file, 'r', encoding='utf-8') as f:
@@ -625,12 +437,6 @@ class AiderVoiceGUI:
                         self.log_message(f"❌ Error reading file {file}: {str(e)}")
         except Exception as e:
             self.log_message(f"❌ Error browsing files: {str(e)}")
-
-    def check_all_issues(self):
-        """Check all files for issues"""
-        self.issues_text.delete('1.0', tk.END)
-        for file in self.interface_state['files']:
-            self.log_message(f"Checking {file} for issues...")
 
     def remove_selected_file(self):
         """Remove selected file from listbox"""
@@ -1935,22 +1741,15 @@ class WebSocketManager:
 
 
 def main():
-    """Main entry point for the Aider Voice Assistant"""
+    """Main entry point"""
     root = tk.Tk()
     root.geometry("1200x800")
-    
-    # Create and initialize the application
     app = AiderVoiceGUI(root)
     
-    # Start voice control if dependencies are available
     if all([sd, np, websockets, OpenAI]):
         root.after(1000, app.start_voice_control)
     
-    # Start the Tkinter event loop
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
-
-
