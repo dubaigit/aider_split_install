@@ -1,4 +1,8 @@
-"""Main module for Aider Voice Assistant."""
+"""Main module for Aider Voice Assistant.
+
+This module provides the core functionality for the Aider Voice Assistant,
+including GUI, audio processing, and WebSocket communication.
+"""
 
 # Standard library imports
 import argparse
@@ -33,6 +37,8 @@ from websockets.exceptions import WebSocketException
 from exceptions import (
     AiderError, AudioError, AudioProcessingError, AudioDeviceError,
     WebSocketError, WebSocketConnectionError, WebSocketTimeoutError,
+    WebSocketAuthenticationError, StateError, ValidationError,
+    ConfigurationError
     WebSocketAuthenticationError, StateError, ValidationError,
     ConfigurationError
 )
