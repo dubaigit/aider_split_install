@@ -1203,7 +1203,22 @@ class AiderVoiceGUI:
             self.interface_state['command_history'][-1]['error'] = str(e)
 
 
-class TestVoiceCommandProcessor(unittest.TestCase):
+class AsyncTestCase(unittest.TestCase):
+    """Base class for async tests with helper methods"""
+    
+    def setUp(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        
+    def tearDown(self):
+        self.loop.close()
+        asyncio.set_event_loop(None)
+        
+    def async_run(self, coro):
+        """Run coroutine in the test loop"""
+        return self.loop.run_until_complete(coro)
+
+class TestVoiceCommandProcessor(AsyncTestCase):
     """Test suite for VoiceCommandProcessor functionality"""
     
     def setUp(self):
@@ -1211,26 +1226,26 @@ class TestVoiceCommandProcessor(unittest.TestCase):
         self.parent = MagicMock()
         self.processor = VoiceCommandProcessor(self.parent)
 
-    def test_validate_command_empty(self):
+    async def test_validate_command_empty(self):
         """Test validation of empty commands"""
-        self.assertFalse(self.processor.validate_command(""))
-        self.assertFalse(self.processor.validate_command(None))
-        self.assertFalse(self.processor.validate_command("   "))
+        self.assertFalse(await self.processor.validate_command(""))
+        self.assertFalse(await self.processor.validate_command(None))
+        self.assertFalse(await self.processor.validate_command("   "))
 
-    def test_validate_command_length(self):
+    async def test_validate_command_length(self):
         """Test validation of command length"""
         long_command = "a" * 1001
-        self.assertFalse(self.processor.validate_command(long_command))
+        self.assertFalse(await self.processor.validate_command(long_command))
         valid_command = "a" * 1000
-        self.assertTrue(self.processor.validate_command(valid_command))
+        self.assertTrue(await self.processor.validate_command(valid_command))
 
-    def test_validate_command_profanity(self):
+    async def test_validate_command_profanity(self):
         """Test validation of command content"""
-        self.assertFalse(self.processor.validate_command("profanity1 test"))
-        self.assertFalse(self.processor.validate_command("test profanity2"))
-        self.assertTrue(self.processor.validate_command("normal command"))
+        self.assertFalse(await self.processor.validate_command("profanity1 test"))
+        self.assertFalse(await self.processor.validate_command("test profanity2"))
+        self.assertTrue(await self.processor.validate_command("normal command"))
 
-class TestArgumentParsing(unittest.TestCase):
+class TestArgumentParsing(AsyncTestCase):
     """Test command line argument parsing"""
 
     def test_default_arguments(self):
@@ -1270,7 +1285,7 @@ class TestArgumentParsing(unittest.TestCase):
         self.assertTrue(args.gui)
         self.assertTrue(args.auto)
 
-class TestGUIEventHandlers(unittest.TestCase):
+class TestGUIEventHandlers(AsyncTestCase):
     """Test GUI event handlers and keyboard shortcuts"""
 
     def setUp(self):
