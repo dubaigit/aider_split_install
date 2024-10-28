@@ -1187,7 +1187,11 @@ class AiderVoiceGUI:
             self.log_message("Response completed")
 
     async def _handle_error_event(self, event):
-        """Handle error events"""
+        """Handle error events from the WebSocket connection.
+        
+        Args:
+            event: The error event data from the WebSocket
+        """
         error_msg = event.get("error", {}).get(
             "message", "Unknown error"
         )
@@ -1196,7 +1200,14 @@ class AiderVoiceGUI:
             self.response_active = True
 
     async def _handle_connection_error(self, delay):
-        """Handle connection errors with exponential backoff"""
+        """Handle connection errors with exponential backoff.
+        
+        Args:
+            delay: Time in seconds to wait before retry
+            
+        Returns:
+            bool: True if reconnection successful, False otherwise
+        """
         try:
             self.log_message(f"Connection error - attempting reconnect in {delay}s...")
             await asyncio.sleep(delay)
