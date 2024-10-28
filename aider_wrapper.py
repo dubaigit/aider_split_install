@@ -349,20 +349,24 @@ class AiderVoiceGUI:
 
     def __init__(self, root):
         """Initialize the AiderVoiceGUI with all required attributes."""
+        # Store root window
         self.root = root
         self.root.title("Aider Voice Assistant")
 
-        # Parse command line arguments
+        # Parse command line arguments first
         self.args = self.parse_arguments()
 
-        # Initialize core components
+        # Initialize all instance attributes to None/empty
+        self._init_attributes()
+
+        # Initialize components in dependency order
         self._init_queues()
         self._init_audio()
         self._init_state()
         self._init_managers()
         self._init_async()
 
-        # Setup GUI if enabled
+        # Setup GUI components last if enabled
         if self.args.gui:
             self.setup_gui()
 
@@ -481,28 +485,6 @@ class AiderVoiceGUI:
 
     def setup_gui(self):
         """Setup GUI components and layout"""
-        # Initialize all instance attributes first
-        self.main_frame = None
-        self.left_panel = None
-        self.control_frame = None
-        self.status_label = None
-        self.add_files_button = None
-        self.check_issues_button = None
-        self.files_frame = None
-        self.files_listbox = None
-        self.remove_file_button = None
-        self.input_frame = None
-        self.input_text = None
-        self.clipboard_button = None
-        self.send_button = None
-        self.right_panel = None
-        self.transcription_frame = None
-        self.transcription_text = None
-        self.issues_frame = None
-        self.issues_text = None
-        self.log_frame = None
-        self.output_text = None
-
         # Create main frame with padding
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -1763,21 +1745,50 @@ if __name__ == "__main__":
         self.audio_thread = None
         self.p = pyaudio.PyAudio()
 
-    def _init_state(self):
-        """Initialize state tracking"""
-        # Response state
+    def _init_attributes(self):
+        """Initialize all instance attributes to None/empty values"""
+        # GUI components
+        self.main_frame = None
+        self.left_panel = None
+        self.control_frame = None
+        self.status_label = None
+        self.add_files_button = None
+        self.check_issues_button = None
+        self.files_frame = None
+        self.files_listbox = None
+        self.remove_file_button = None
+        self.input_frame = None
+        self.input_text = None
+        self.clipboard_button = None
+        self.send_button = None
+        self.right_panel = None
+        self.transcription_frame = None
+        self.transcription_text = None
+        self.issues_frame = None
+        self.issues_text = None
+        self.log_frame = None
+        self.output_text = None
+
+        # Audio components
+        self.audio_buffer = bytearray()
+        self.mic_stream = None
+        self.spkr_stream = None
+        self.p = None
+        self.chunk_buffer = []
+        self.chunk_buffer_size = 5
+        self.audio_thread = None
+
+        # State tracking
         self.response_active = False
         self.last_transcript_id = None
         self.last_audio_time = time.time()
-        
-        # Control flags
         self.recording = False
         self.auto_mode = False
         self.running = True
         self.fixing_issues = False
         self.mic_active = False
         self.mic_on_at = 0
-        
+
         # Event handling
         self.stop_event = threading.Event()
         self.log_frequency = 50
@@ -1789,15 +1800,17 @@ if __name__ == "__main__":
         self.aider_process = None
         self.temp_files = []
 
-        # Interface state
-        self.interface_state = {
-            "files": {},  # Store file contents
-            "issues": [],  # Store detected issues
-            "aider_output": [],  # Store Aider responses
-            "clipboard_history": [],  # Track clipboard content
-            "last_analysis": None,  # Store last analysis results
-            "command_history": [],  # Track command history
-        }
+        # Managers
+        self.clipboard_manager = None
+        self.result_processor = None
+        self.error_processor = None
+        self.ws_manager = None
+        self.performance_monitor = None
+        self.keyboard_shortcuts = None
+
+        # Async components
+        self.loop = None
+        self.thread = None
 
     def _init_managers(self):
         """Initialize manager components"""
