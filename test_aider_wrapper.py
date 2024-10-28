@@ -16,6 +16,7 @@ from aider_wrapper import (
     WebSocketManager,
     VoiceCommandProcessor,
     ClipboardManager,
+    ConnectionState,
 )
 
 import unittest
