@@ -488,6 +488,27 @@ class AiderVoiceGUI:
     def parse_arguments(cls, args=None):
         """Parse command line arguments"""
         parser = cls.get_parser()
+        
+        # Add arguments
+        parser.add_argument('--voice-only', action='store_true',
+                          help='Run in voice-only mode without GUI')
+        parser.add_argument('-i', '--instructions',
+                          help='Path to instructions file')
+        parser.add_argument('-c', '--clipboard', action='store_true',
+                          help='Monitor clipboard for content')
+        parser.add_argument('--chat-mode', choices=['code', 'ask'],
+                          default='code', help='Chat interaction mode')
+        parser.add_argument('--suggest-shell-commands', action='store_true',
+                          help='Enable shell command suggestions')
+        parser.add_argument('--model',
+                          help='Specify OpenAI model to use')
+        parser.add_argument('--gui', action='store_true',
+                          help='Run with GUI interface')
+        parser.add_argument('--auto', action='store_true',
+                          help='Enable automatic mode')
+        parser.add_argument('filenames', nargs='*',
+                          help='Files to process')
+        
         parsed_args = parser.parse_args(args)
         
         # Validate arguments
