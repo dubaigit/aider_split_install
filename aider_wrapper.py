@@ -175,6 +175,104 @@ class KeyboardShortcuts:
 # Using exceptions from exceptions.py instead
 
 
+class FileManager:
+    """Manages file operations and tracking"""
+    
+    def __init__(self, parent):
+        self.parent = parent
+        self.watched_files = {}
+        self.file_hashes = {}
+        self.last_modified = {}
+        self._lock = threading.Lock()
+        
+    def add_file(self, filepath):
+        """Add a file to be tracked"""
+        try:
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(f"File not found: {filepath}")
+                
+            if not os.access(filepath, os.R_OK):
+                raise PermissionError(f"No read permission: {filepath}")
+                
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            with self._lock:
+                self.watched_files[filepath] = content
+                self.file_hashes[filepath] = hash(content)
+                self.last_modified[filepath] = os.path.getmtime(filepath)
+                
+            return True
+            
+        except Exception as e:
+            self.parent.log_message(f"❌ Error adding file {filepath}: {str(e)}")
+            return False
+            
+    def remove_file(self, filepath):
+        """Remove a file from tracking"""
+        with self._lock:
+            self.watched_files.pop(filepath, None)
+            self.file_hashes.pop(filepath, None)
+            self.last_modified.pop(filepath, None)
+            
+    def check_for_changes(self):
+        """Check if any tracked files have changed"""
+        changed_files = []
+        with self._lock:
+            for filepath in list(self.watched_files.keys()):
+                try:
+                    if not os.path.exists(filepath):
+                        self.parent.log_message(f"⚠️ File no longer exists: {filepath}")
+                        self.remove_file(filepath)
+                        continue
+                        
+                    current_mtime = os.path.getmtime(filepath)
+                    if current_mtime != self.last_modified[filepath]:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            new_content = f.read()
+                            new_hash = hash(new_content)
+                            
+                        if new_hash != self.file_hashes[filepath]:
+                            changed_files.append(filepath)
+                            self.watched_files[filepath] = new_content
+                            self.file_hashes[filepath] = new_hash
+                            self.last_modified[filepath] = current_mtime
+                            
+                except Exception as e:
+                    self.parent.log_message(f"❌ Error checking file {filepath}: {str(e)}")
+                    
+        return changed_files
+        
+    def get_content(self, filepath):
+        """Get current content of a tracked file"""
+        with self._lock:
+            return self.watched_files.get(filepath)
+            
+    def backup_files(self, backup_dir='.backup'):
+        """Create backups of all tracked files"""
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+            
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        backup_files = []
+        
+        with self._lock:
+            for filepath in self.watched_files:
+                try:
+                    backup_name = f"{os.path.basename(filepath)}.{timestamp}"
+                    backup_path = os.path.join(backup_dir, backup_name)
+                    
+                    with open(filepath, 'r', encoding='utf-8') as src:
+                        with open(backup_path, 'w', encoding='utf-8') as dst:
+                            dst.write(src.read())
+                            
+                    backup_files.append(backup_path)
+                    
+                except Exception as e:
+                    self.parent.log_message(f"❌ Error backing up {filepath}: {str(e)}")
+                    
+        return backup_files
+
 class ResultProcessor:
     """Processes and manages results from various operations"""
 
