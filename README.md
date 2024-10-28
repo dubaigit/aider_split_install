@@ -1,6 +1,16 @@
-# Aider Split Install (ALPHA)
+# aider_split
 
 A powerful parallel code modification tool that leverages aider CLI to run multiple concurrent code refactoring tasks, supporting parallel modifications within the same file using precise search/replace patterns.
+
+> ⚠️ **IMPORTANT NOTE**: 
+> - Always start with `--max-concurrent 1` for initial runs
+> - Gradually increase to maximum of 5 based on:
+>   * File size
+>   * Complexity of changes
+>   * System resources
+> - Aider caches file state between runs, multiple concurrent changes might cause state mismatches
+> - For large files, use smaller batches of concurrent tasks
+> - Monitor changes carefully when scaling up concurrency
 
 [![GitHub](https://img.shields.io/github/license/dubaigit/aider_split_install)](https://github.com/dubaigit/aider_split_install/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/downloads/)
@@ -20,6 +30,25 @@ A powerful parallel code modification tool that leverages aider CLI to run multi
 - aider CLI tool (`pip install aider-chat`)
 - Anthropic API key (for Claude access)
 
+## Recommended Scaling Strategy
+
+Start with:
+```bash
+# Initial run
+aider_split --max-concurrent 1 app.py
+
+# After successful run, increase gradually
+aider_split --max-concurrent 2 app.py
+aider_split --max-concurrent 3 app.py
+# ... and so on up to 5
+```
+
+Monitor each run for:
+- Successful pattern matching
+- Correct file state handling
+- No conflicting changes
+- System resource usage
+
 ## Quick Start
 
 ### Linux/MacOS
@@ -27,8 +56,9 @@ A powerful parallel code modification tool that leverages aider CLI to run multi
 # Install globally
 sudo aider_split --setup-bin
 
-# Run with 5 concurrent tasks
-aider_split --max-concurrent 5 app.py
+# Run with gradually increasing concurrency
+aider_split --max-concurrent 1 app.py  # Start here
+aider_split --max-concurrent 5 app.py  # Scale up when ready
 ```
 
 ### Windows
@@ -36,7 +66,10 @@ aider_split --max-concurrent 5 app.py
 # Navigate to script directory
 cd path\to\aider_split
 
-# Run directly with Python
+# Run directly with Python - start with low concurrency
+python aider_split.py --max-concurrent 1 app.py
+
+# Scale up when stable
 python aider_split.py --max-concurrent 5 app.py
 
 # Or, from any location using full path
@@ -65,12 +98,13 @@ python C:\path\to\aider_split\aider_split.py --max-concurrent 5 app.py
 3. **Use Aider Command**:
    - Execute the following command to apply fixes:  
      ```bash
-     aider_split file1.py file2.py
+     aider_split --max-concurrent 1 file1.py file2.py  # Start with 1
      ```
 
 4. **Verify and Reiterate**:
    - Reread the file to confirm if all specified changes were correctly applied.
-   - If any modifications are incomplete, add specific details about what remains to be addressed, update `fix_instructions.txt`, and rerun the command if needed.
+   - If successful, gradually increase max-concurrent
+   - If any modifications are incomplete, adjust instructions and rerun
 ```
 
 > **Note**: 
@@ -156,15 +190,25 @@ class UserManager:
 - Expected: Input validation
 ```
 
-3. **Run aider_split**:
+3. **Run aider_split with progressive scaling**:
 
 Linux/MacOS:
 ```bash
+# Start with single task
+aider_split --max-concurrent 1 app.py
+
+# If successful, scale up gradually
+aider_split --max-concurrent 3 app.py
 aider_split --max-concurrent 5 app.py
 ```
 
 Windows:
 ```powershell
+# Start with single task
+python aider_split.py --max-concurrent 1 app.py
+
+# Scale up if successful
+python aider_split.py --max-concurrent 3 app.py
 python aider_split.py --max-concurrent 5 app.py
 ```
 
@@ -298,7 +342,7 @@ class UserManager:
 aider_split --help
 
 Options:
-  --max-concurrent 5   Run 5 tasks simultaneously
+  --max-concurrent 5   Run 5 tasks simultaneously (start with 1)
   --setup-bin         Install globally
   --help, -h         Show this help message
 ```
@@ -307,16 +351,25 @@ Options:
 
 1. **Large File Refactoring**
 ```bash
+# Start with single task
+aider_split --max-concurrent 1 large_module.py
+# Scale up if successful
 aider_split --max-concurrent 5 large_module.py
 ```
 
 2. **Multiple Files**
 ```bash
+# Start conservatively
+aider_split --max-concurrent 1 *.py
+# Increase if stable
 aider_split --max-concurrent 5 *.py
 ```
 
 3. **Targeted Changes**
 ```bash
+# Begin with single task
+aider_split --max-concurrent 1 specific_file.py
+# Scale as needed
 aider_split --max-concurrent 5 specific_file.py
 ```
 
