@@ -8,9 +8,12 @@ import json
 import os
 import threading
 import time
+import unittest
 from contextlib import contextmanager
-from queue import Empty as QueueEmpty, Queue
 from enum import Enum, auto
+from queue import Empty as QueueEmpty, Queue
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 # GUI imports
 import tkinter as tk
@@ -18,6 +21,7 @@ from tkinter import filedialog, scrolledtext, ttk
 
 # Third-party imports
 import pyaudio
+import websockets
 from websockets.exceptions import WebSocketException
 
 # Custom exceptions
