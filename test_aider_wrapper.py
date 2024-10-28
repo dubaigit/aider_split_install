@@ -95,42 +95,6 @@ def create_gui_app(cls, mock_args):
         yield app
         root.destroy()
 
-class TestAiderVoiceGUI(unittest.TestCase):
-    """Test suite for AiderVoiceGUI main functionality"""
-    
-    @classmethod
-    def setUpClass(cls):
-        """Set up test suite environment"""
-        # Mock argument parser
-        cls.args_patcher = patch('argparse.ArgumentParser.parse_args')
-        cls.mock_parse_args = cls.args_patcher.start()
-        
-        mock_args = MagicMock()
-        mock_args.voice_only = False
-        mock_args.instructions = None
-        mock_args.clipboard = False
-        mock_args.chat_mode = "code"
-        mock_args.suggest_shell_commands = False
-        mock_args.model = None
-        mock_args.gui = True
-        mock_args.auto = False
-        cls.mock_parse_args.return_value = mock_args
-
-    @classmethod
-    def tearDownClass(cls):
-        """Clean up test suite environment"""
-        cls.args_patcher.stop()
-
-    def setUp(self):
-        """Set up test case environment"""
-        self.root = tk.Tk()
-        self.app = AiderVoiceGUI(self.root)
-        self.app.setup_gui()
-
-    def tearDown(self):
-        """Clean up after each test"""
-        if hasattr(self, 'root'):
-            self.root.destroy()
 
     def test_init(self):
         """Test initialization of GUI components"""
@@ -232,8 +196,11 @@ class TestAiderVoiceGUI(unittest.TestCase):
         mock_ws.send = AsyncMock(side_effect=asyncio.TimeoutError())
         mock_connect.return_value = mock_ws
 
-        result = await self.app.connect_websocket()
-        self.assertFalse(result)
+        async def run_test():
+            result = await self.app.connect_websocket()
+            self.assertFalse(result)
+
+        await run_async_test(run_test())
 
     @patch('websockets.connect', new_callable=AsyncMock)
     async def test_websocket_close(self, mock_connect):
@@ -937,35 +904,24 @@ class TestClipboardManager(unittest.TestCase):
     @patch('pyperclip.paste')
     def test_get_current_content(self, mock_paste):
         """Test getting current clipboard content"""
-        # Test code content
-        mock_paste.return_value = "def test():\n    pass  \n\n"  # Extra spaces and newlines
-        result = self.manager.get_current_content()
-        self.assertEqual(result, "def test():\n    pass\n")  # Should be cleaned
+        test_cases = [
+            ("def test():\n    pass  \n\n", "def test():\n    pass\n"),  # Code
+            ("  https://example.com  \n", "https://example.com"),  # URL
+            ("  regular text  \n", "regular text"),  # Text
+            ("", "")  # Empty
+        ]
+        
+        for input_content, expected in test_cases:
+            mock_paste.return_value = input_content
+            result = self.manager.get_current_content()
+            self.assertEqual(result, expected, f"Failed for input: {input_content}")
 
-        # Test URL content
-        mock_paste.return_value = "  https://example.com  \n"  # Extra whitespace
-        result = self.manager.get_current_content()
-        self.assertEqual(result, "https://example.com")  # Should be stripped
-
-        # Test text content
-        mock_paste.return_value = "  regular text  \n"  # Extra whitespace
-        result = self.manager.get_current_content()
-        self.assertEqual(result, "regular text")  # Should be stripped
-
-        # Test empty content
-        mock_paste.return_value = ""
-        result = self.manager.get_current_content()
-        self.assertEqual(result, "")
-
-def run_async_test(coro):
+async def run_async_test(coro):
     """Helper function to run async tests"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(coro)
+        return await coro
     finally:
-        loop.close()
-        asyncio.set_event_loop(None)
+        await asyncio.sleep(0)  # Allow other tasks to run
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
