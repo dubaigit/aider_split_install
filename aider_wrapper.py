@@ -10,11 +10,10 @@ import threading
 import time
 import unittest
 from contextlib import contextmanager
-from queue import Empty as QueueEmpty, Queue
 from enum import Enum, auto
-from unittest.mock import MagicMock, patch
-from queue import Empty as QueueEmpty, Queue
 from pathlib import Path
+from queue import Empty as QueueEmpty, Queue
+from typing import Any, Dict, List, Optional, Tuple, Union
 from unittest.mock import MagicMock, patch
 
 # GUI imports
@@ -22,8 +21,12 @@ import tkinter as tk
 from tkinter import filedialog, scrolledtext, ttk
 
 # Third-party imports
+import numpy as np
 import pyaudio
+import pyperclip
+import sounddevice as sd
 import websockets
+from openai import OpenAI
 from websockets.exceptions import WebSocketException
 
 # Custom exceptions
@@ -34,36 +37,28 @@ from exceptions import (
     ConfigurationError
 )
 
-# Optional third-party imports with fallbacks
-try:
-    import numpy as np
-except ImportError:
-    print("Warning: numpy module not found. Voice functionality will be disabled.")
-    np = None
+# Import error handling
+REQUIRED_PACKAGES = {
+    'numpy': 'Voice functionality',
+    'openai': 'Voice functionality', 
+    'pyperclip': 'Clipboard functionality',
+    'sounddevice': 'Voice functionality',
+    'websockets': 'Voice functionality'
+}
 
-try:
-    from openai import OpenAI
-except ImportError:
-    print("Warning: openai module not found. Voice functionality will be disabled.")
-    OpenAI = None
-
-try:
-    import pyperclip
-except ImportError:
-    print("Warning: pyperclip module not found. Clipboard functionality will be disabled.")
-    pyperclip = None
-
-try:
-    import sounddevice as sd
-except ImportError:
-    print("Warning: sounddevice module not found. Voice functionality will be disabled.")
-    sd = None
-
-try:
-    import websockets
-except ImportError:
-    print("Warning: websockets module not found. Voice functionality will be disabled.")
-    websockets = None
+def check_imports() -> None:
+    """Check required package imports and print warnings."""
+    missing = []
+    for package, feature in REQUIRED_PACKAGES.items():
+        try:
+            __import__(package)
+        except ImportError:
+            missing.append(f"{package} ({feature})")
+    
+    if missing:
+        print("Warning: The following required packages are missing:")
+        for pkg in missing:
+            print(f"- {pkg} will be disabled")
 
 # Audio settings
 CHUNK_SIZE = 1024  # Smaller chunks for more responsive audio
