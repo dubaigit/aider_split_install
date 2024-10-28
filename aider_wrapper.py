@@ -4,26 +4,22 @@ This module provides the core functionality for the Aider Voice Assistant,
 including GUI, audio processing, and WebSocket communication.
 """
 
-import functools
-import logging
-import traceback
-from typing import Callable, TypeVar, ParamSpec
-
 # Standard library imports
 import argparse
 import asyncio
 import base64
+import functools
 import json
+import logging
 import os
 import threading
 import time
-import unittest
+import traceback
 from contextlib import contextmanager
 from enum import Enum, auto
 from pathlib import Path
 from queue import Empty as QueueEmpty, Queue
-from typing import Any, Dict, List, Optional, Tuple, Union
-from unittest.mock import MagicMock, patch
+from typing import Any, Callable, Dict, List, Optional, ParamSpec, Tuple, TypeVar, Union
 
 # GUI imports
 import tkinter as tk
@@ -40,10 +36,17 @@ from websockets.exceptions import WebSocketException
 
 # Custom exceptions
 from exceptions import (
-    AiderError, AudioError, AudioProcessingError, AudioDeviceError,
-    WebSocketError, WebSocketConnectionError, WebSocketTimeoutError, 
-    WebSocketAuthenticationError, StateError, ValidationError,
-    ConfigurationError
+    AiderError,
+    AudioDeviceError,
+    AudioError, 
+    AudioProcessingError,
+    ConfigurationError,
+    StateError,
+    ValidationError,
+    WebSocketAuthenticationError,
+    WebSocketConnectionError,
+    WebSocketError,
+    WebSocketTimeoutError,
 )
 
 # Import error handling
