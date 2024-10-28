@@ -1427,13 +1427,17 @@ class WebSocketManager:
             if self.parent.ws:
                 await self.parent.ws.ping()
                 self.last_ping_time = time.time()
+                return True
+            return False
         except websockets.exceptions.WebSocketException as e:
             self.connection_state = "disconnected"
             self.parent.log_message(f"⚠️ WebSocket connection lost due to WebSocket error: {e}")
+            return False
         except ConnectionError as e:
             self.connection_state = "disconnected"
             self.parent.log_message(f"⚠️ WebSocket connection lost due to connection error: {e}")
             await self.attempt_reconnect()
+            return False
 
     async def attempt_reconnect(self):
         """Attempt to reconnect with exponential backoff"""
