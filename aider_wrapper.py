@@ -1127,6 +1127,33 @@ class AiderVoiceGUI:
             self.interface_state['command_history'][-1]['error'] = str(e)
 
 
+class TestVoiceCommandProcessor(unittest.TestCase):
+    """Test suite for VoiceCommandProcessor functionality"""
+    
+    def setUp(self):
+        """Set up test environment"""
+        self.parent = MagicMock()
+        self.processor = VoiceCommandProcessor(self.parent)
+
+    def test_validate_command_empty(self):
+        """Test validation of empty commands"""
+        self.assertFalse(self.processor.validate_command(""))
+        self.assertFalse(self.processor.validate_command(None))
+        self.assertFalse(self.processor.validate_command("   "))
+
+    def test_validate_command_length(self):
+        """Test validation of command length"""
+        long_command = "a" * 1001
+        self.assertFalse(self.processor.validate_command(long_command))
+        valid_command = "a" * 1000
+        self.assertTrue(self.processor.validate_command(valid_command))
+
+    def test_validate_command_profanity(self):
+        """Test validation of command content"""
+        self.assertFalse(self.processor.validate_command("profanity1 test"))
+        self.assertFalse(self.processor.validate_command("test profanity2"))
+        self.assertTrue(self.processor.validate_command("normal command"))
+
 class TestGUIEventHandlers(unittest.TestCase):
     """Test GUI event handlers and keyboard shortcuts"""
 
