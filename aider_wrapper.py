@@ -1214,9 +1214,12 @@ class AsyncTestCase(unittest.TestCase):
         self.loop.close()
         asyncio.set_event_loop(None)
         
-    def async_run(self, coro):
-        """Run coroutine in the test loop"""
-        return self.loop.run_until_complete(coro)
+    def run_async_test(self, coro):
+        """Run coroutine in the test loop with error handling"""
+        try:
+            return self.loop.run_until_complete(coro)
+        except Exception as e:
+            self.fail(f"Async test failed with error: {e}")
 
 class TestVoiceCommandProcessor(AsyncTestCase):
     """Test suite for VoiceCommandProcessor functionality"""
@@ -1226,21 +1229,33 @@ class TestVoiceCommandProcessor(AsyncTestCase):
         self.parent = MagicMock()
         self.processor = VoiceCommandProcessor(self.parent)
 
-    async def test_validate_command_empty(self):
+    def test_validate_command_empty(self):
         """Test validation of empty commands"""
+        self.run_async_test(self._test_validate_command_empty())
+
+    async def _test_validate_command_empty(self):
+        """Async implementation of empty command validation tests"""
         self.assertFalse(await self.processor.validate_command(""))
         self.assertFalse(await self.processor.validate_command(None))
         self.assertFalse(await self.processor.validate_command("   "))
 
-    async def test_validate_command_length(self):
+    def test_validate_command_length(self):
         """Test validation of command length"""
+        self.run_async_test(self._test_validate_command_length())
+
+    async def _test_validate_command_length(self):
+        """Async implementation of command length validation tests"""
         long_command = "a" * 1001
         self.assertFalse(await self.processor.validate_command(long_command))
         valid_command = "a" * 1000
         self.assertTrue(await self.processor.validate_command(valid_command))
 
-    async def test_validate_command_profanity(self):
+    def test_validate_command_profanity(self):
         """Test validation of command content"""
+        self.run_async_test(self._test_validate_command_profanity())
+
+    async def _test_validate_command_profanity(self):
+        """Async implementation of profanity validation tests"""
         self.assertFalse(await self.processor.validate_command("profanity1 test"))
         self.assertFalse(await self.processor.validate_command("test profanity2"))
         self.assertTrue(await self.processor.validate_command("normal command"))
