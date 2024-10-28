@@ -197,6 +197,82 @@ class KeyboardShortcuts:
         for key, func in shortcuts.items():
             self.parent.root.bind(key, lambda e, f=func: f())
 
+class ClipboardManager:
+    """Manages clipboard monitoring and content processing"""
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.previous_content = ""
+        self.monitoring = False
+        self.monitoring_task = None
+        self.update_interval = 0.5  # seconds
+        self.max_content_size = 1024 * 1024  # 1MB
+        self.history = []
+        self.interface_state = parent.interface_state
+        self.log_message = parent.log_message
+        self.processors = {
+            "code": self.process_code,
+            "text": self.process_text,
+            "url": self.process_url,
+        }
+
+        # Error tracking
+        self.error_count = 0
+        self.max_errors = 3
+        self.last_error_time = 0
+        self.error_cooldown = 60  # seconds
+
+    def get_current_content(self):
+        """Get and process current clipboard content"""
+        content = pyperclip.paste()
+        content_type = self.detect_content_type(content)
+        return self.processors[content_type](content)
+
+    def detect_content_type(self, content):
+        """Detect the type of clipboard content"""
+        if self.looks_like_code(content):
+            return "code"
+        if self.looks_like_url(content):
+            return "url"
+        return "text"
+
+    def looks_like_code(self, content):
+        """Check if content appears to be code"""
+        code_indicators = ["def ", "class ", "import ", "function", "{", "}", ";"]
+        return any(indicator in content for indicator in code_indicators)
+
+    def looks_like_url(self, content):
+        """Check if content appears to be a URL"""
+        return content.startswith(("http://", "https://", "www."))
+
+    async def monitor_clipboard(self):
+        """Monitor clipboard for changes"""
+        self.monitoring = True
+        while self.monitoring:
+            current_content = pyperclip.paste()
+            if current_content != self.previous_content:
+                content_type = self.detect_content_type(current_content)
+                await self.processors[content_type](current_content)
+                self.previous_content = current_content
+            await asyncio.sleep(0.5)
+
+    def process_code(self, content):
+        """Process code content"""
+        # Remove unnecessary whitespace while preserving indentation
+        lines = content.splitlines()
+        cleaned_lines = [line.rstrip() for line in lines]
+        return "\n".join(cleaned_lines)
+
+    def process_text(self, content):
+        """Process text content"""
+        # Basic text cleanup
+        return content.strip()
+
+    def process_url(self, content):
+        """Process URL content"""
+        # Basic URL validation and cleanup
+        return content.strip()
+
 class ResultProcessor:
     """Processes and manages results from various operations"""
 
@@ -272,6 +348,16 @@ class VoiceCommandProcessor:
             "timestamp": time.time(),
             "status": status
         })
+
+class ConnectionState(Enum):
+    """Enum for WebSocket connection states"""
+    DISCONNECTED = auto()  # Initial state or after clean disconnect
+    CONNECTING = auto()    # Attempting initial connection
+    CONNECTED = auto()     # Successfully connected
+    RECONNECTING = auto()  # Attempting to restore lost connection
+    FAILED = auto()        # Connection attempts exhausted
+    ERROR = auto()         # Unexpected error state
+    CLOSING = auto()       # Clean shutdown in progress
 
 class WebSocketManager:
     """Manages WebSocket connection state and monitoring"""
