@@ -2,7 +2,7 @@
 import argparse
 import asyncio
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import base64
 import json
 import os
