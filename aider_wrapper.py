@@ -262,90 +262,140 @@ class AiderVoiceGUI:
     - Performance monitoring and error handling
     """
 
-    @staticmethod
-    def parse_arguments(args=None):
-        """Parse command line arguments for the Aider Voice Assistant.
+    _parser = None
 
-        This method parses and validates command line arguments that control the behavior
-        of the Aider Voice Assistant, including interface options, input sources, and 
-        operational modes.
+    @classmethod
+    def get_parser(cls):
+        """Get or create the argument parser singleton.
+        
+        Returns:
+            argparse.ArgumentParser: The argument parser instance
+        """
+        if cls._parser is None:
+            cls._parser = argparse.ArgumentParser(
+                description="Aider Voice Assistant - Voice-controlled coding assistant",
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter
+            )
+            
+            # Create argument groups for better organization
+            voice_group = cls._parser.add_argument_group('Voice Control Options')
+            input_group = cls._parser.add_argument_group('Input Options') 
+            behavior_group = cls._parser.add_argument_group('Behavior Options')
+            interface_group = cls._parser.add_argument_group('Interface Options')
+            
+            # Voice control options
+            voice_group.add_argument(
+                "--voice-only",
+                action="store_true",
+                help="Run in voice-only mode without GUI"
+            )
+            voice_group.add_argument(
+                "--voice-model",
+                default="whisper-1",
+                help="OpenAI Whisper model to use for voice recognition"
+            )
+            
+            # Input options
+            input_group.add_argument(
+                "-i", "--instructions",
+                help="Path to file containing initial instructions"
+            )
+            input_group.add_argument(
+                "-c", "--clipboard",
+                action="store_true",
+                help="Monitor clipboard for content"
+            )
+            input_group.add_argument(
+                "filenames",
+                nargs="*",
+                help="Files to edit"
+            )
+            
+            # Behavior options
+            behavior_group.add_argument(
+                "--chat-mode",
+                choices=["code", "ask"],
+                default="code",
+                help="Chat interaction mode"
+            )
+            behavior_group.add_argument(
+                "--suggest-shell-commands",
+                action="store_true",
+                help="Suggest shell commands for actions"
+            )
+            behavior_group.add_argument(
+                "--model",
+                default="gpt-4",
+                help="OpenAI GPT model to use for chat"
+            )
+            behavior_group.add_argument(
+                "--temperature",
+                type=float,
+                default=0.7,
+                help="Temperature for model responses"
+            )
+            behavior_group.add_argument(
+                "--max-tokens",
+                type=int,
+                default=2000,
+                help="Maximum tokens per response"
+            )
+            
+            # Interface options
+            interface_group.add_argument(
+                "--gui",
+                action="store_true",
+                help="Run with graphical interface"
+            )
+            interface_group.add_argument(
+                "--auto",
+                action="store_true",
+                help="Run in automatic mode"
+            )
+            interface_group.add_argument(
+                "--verbose",
+                action="store_true", 
+                help="Enable verbose logging"
+            )
+
+        return cls._parser
+
+    @classmethod
+    def parse_arguments(cls, args=None):
+        """Parse command line arguments for the Aider Voice Assistant.
 
         Args:
             args (Optional[List[str]]): Command line arguments to parse. If None, defaults
                 to sys.argv[1:].
 
         Returns:
-            argparse.Namespace: Parsed command line arguments containing:
-                voice_only (bool): Whether to run in voice-only mode without GUI
-                instructions (Optional[str]): Path to file containing initial instructions
-                clipboard (bool): Whether to monitor clipboard for content
-                filenames (List[str]): List of files to edit
-                chat_mode (str): Chat interaction mode, either 'code' or 'ask'
-                suggest_shell_commands (bool): Whether to suggest shell commands for actions
-                model (Optional[str]): Name of OpenAI model to use
-                gui (bool): Whether to run with graphical interface
-                auto (bool): Whether to run in automatic mode
+            argparse.Namespace: Parsed command line arguments
 
         Raises:
             SystemExit: If invalid arguments are provided or --help is used
         """
-        parser = argparse.ArgumentParser(
-            description="Aider Voice Assistant - Voice-controlled coding assistant"
-        )
+        parser = cls.get_parser()
         
-        # Voice control options
-        parser.add_argument(
-            "--voice-only",
-            action="store_true",
-            help="Run in voice-only mode without GUI"
-        )
+        parsed_args = parser.parse_args(args)
         
-        # Input options
-        parser.add_argument(
-            "-i", "--instructions",
-            help="Path to file containing initial instructions"
-        )
-        parser.add_argument(
-            "-c", "--clipboard",
-            action="store_true", 
-            help="Monitor clipboard for content"
-        )
-        parser.add_argument(
-            "filenames",
-            nargs="*",
-            help="Files to edit"
-        )
-        
-        # Behavior options
-        parser.add_argument(
-            "--chat-mode",
-            choices=["code", "ask"],
-            default="code",
-            help="Chat interaction mode (default: code)"
-        )
-        parser.add_argument(
-            "--suggest-shell-commands",
-            action="store_true",
-            help="Suggest shell commands for actions"
-        )
-        parser.add_argument(
-            "--model",
-            help="OpenAI model to use"
-        )
-        
-        # Interface options
-        parser.add_argument(
-            "--gui",
-            action="store_true",
-            help="Run with graphical interface"
-        )
-        parser.add_argument(
-            "--auto",
-            action="store_true", 
-            help="Run in automatic mode"
-        )
-        
-        return parser.parse_args(args)
+        # Validate arguments
+        if parsed_args.voice_only and parsed_args.gui:
+            parser.error("Cannot use --voice-only with --gui")
+            
+        if parsed_args.instructions and not os.path.exists(parsed_args.instructions):
+            parser.error(f"Instructions file not found: {parsed_args.instructions}")
+            
+        for filename in parsed_args.filenames:
+            if not os.path.exists(filename):
+                parser.error(f"File not found: {filename}")
+                
+        if parsed_args.temperature < 0 or parsed_args.temperature > 1:
+            parser.error("Temperature must be between 0 and 1")
+            
+        if parsed_args.max_tokens < 1:
+            parser.error("Max tokens must be positive")
+            
+        return parsed_args
 
     def __init__(self, root):
         """Initialize the AiderVoiceGUI with all required attributes."""
