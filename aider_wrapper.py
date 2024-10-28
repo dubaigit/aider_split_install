@@ -246,8 +246,105 @@ class VoiceCommandProcessor:
 
 
 class AiderVoiceGUI:
-
     """A voice-controlled graphical interface for the Aider code assistant.
+
+    This class provides a GUI wrapper around Aider with voice control capabilities,
+    allowing users to interact with Aider through voice commands and a graphical interface.
+    It handles audio processing, WebSocket communication with OpenAI's API, and provides
+    visual feedback through various GUI components.
+
+    Key Features:
+    - Voice command processing and transcription
+    - Real-time audio streaming to OpenAI's API
+    - GUI components for file management and issue tracking
+    - Clipboard integration for code sharing
+    - Asynchronous WebSocket communication
+    - Performance monitoring and error handling
+
+    Attributes:
+        root (tk.Tk): The root Tkinter window
+        recording (bool): Flag indicating if voice recording is active
+        ws (websockets.WebSocketClientProtocol): WebSocket connection to OpenAI
+        client (OpenAI): OpenAI API client instance
+        interface_state (dict): Tracks GUI state and content
+    """
+
+    @staticmethod
+    def parse_arguments(args=None):
+        """Parse command line arguments for the Aider Voice Assistant.
+        
+        Args:
+            args (Optional[List[str]]): Command line arguments. Defaults to sys.argv[1:].
+            
+        Returns:
+            argparse.Namespace: Parsed command line arguments with the following attributes:
+                voice_only (bool): Run in voice-only mode without GUI
+                instructions (Optional[str]): Path to file containing initial instructions
+                clipboard (bool): Monitor clipboard for content
+                filenames (List[str]): Files to edit
+                chat_mode (str): Chat interaction mode ('code' or 'ask')
+                suggest_shell_commands (bool): Suggest shell commands for actions
+                model (Optional[str]): OpenAI model to use
+                gui (bool): Run with graphical interface
+                auto (bool): Run in automatic mode
+        """
+        parser = argparse.ArgumentParser(
+            description="Aider Voice Assistant - Voice-controlled coding assistant"
+        )
+        
+        # Voice control options
+        parser.add_argument(
+            "--voice-only",
+            action="store_true",
+            help="Run in voice-only mode without GUI"
+        )
+        
+        # Input options
+        parser.add_argument(
+            "-i", "--instructions",
+            help="Path to file containing initial instructions"
+        )
+        parser.add_argument(
+            "-c", "--clipboard",
+            action="store_true", 
+            help="Monitor clipboard for content"
+        )
+        parser.add_argument(
+            "filenames",
+            nargs="*",
+            help="Files to edit"
+        )
+        
+        # Behavior options
+        parser.add_argument(
+            "--chat-mode",
+            choices=["code", "ask"],
+            default="code",
+            help="Chat interaction mode (default: code)"
+        )
+        parser.add_argument(
+            "--suggest-shell-commands",
+            action="store_true",
+            help="Suggest shell commands for actions"
+        )
+        parser.add_argument(
+            "--model",
+            help="OpenAI model to use"
+        )
+        
+        # Interface options
+        parser.add_argument(
+            "--gui",
+            action="store_true",
+            help="Run with graphical interface"
+        )
+        parser.add_argument(
+            "--auto",
+            action="store_true", 
+            help="Run in automatic mode"
+        )
+        
+        return parser.parse_args(args)
 
     This class provides a GUI wrapper around Aider with voice control capabilities,
     allowing users to interact with Aider through voice commands and a graphical interface.
@@ -1675,73 +1772,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-    @staticmethod
-    def parse_arguments(args=None):
-        """Parse command line arguments for the Aider Voice Assistant.
-        
-        Args:
-            args: List of command line arguments (optional, defaults to sys.argv[1:])
-            
-        Returns:
-            argparse.Namespace: Parsed command line arguments
-        """
-        parser = argparse.ArgumentParser(
-            description="Aider Voice Assistant - Voice-controlled coding assistant"
-        )
-        
-        # Voice control options
-        parser.add_argument(
-            "--voice-only",
-            action="store_true",
-            help="Run in voice-only mode without GUI"
-        )
-        
-        # Input options
-        parser.add_argument(
-            "-i", "--instructions",
-            help="Path to file containing initial instructions"
-        )
-        parser.add_argument(
-            "-c", "--clipboard",
-            action="store_true", 
-            help="Monitor clipboard for content"
-        )
-        parser.add_argument(
-            "filenames",
-            nargs="*",
-            help="Files to edit"
-        )
-        
-        # Behavior options
-        parser.add_argument(
-            "--chat-mode",
-            choices=["code", "ask"],
-            default="code",
-            help="Chat interaction mode (default: code)"
-        )
-        parser.add_argument(
-            "--suggest-shell-commands",
-            action="store_true",
-            help="Suggest shell commands for actions"
-        )
-        parser.add_argument(
-            "--model",
-            help="OpenAI model to use"
-        )
-        
-        # Interface options
-        parser.add_argument(
-            "--gui",
-            action="store_true",
-            help="Run with graphical interface"
-        )
-        parser.add_argument(
-            "--auto",
-            action="store_true", 
-            help="Run in automatic mode"
-        )
-        
-        return parser.parse_args(args)
 
     def _init_queues(self):
         """Initialize queue components"""
