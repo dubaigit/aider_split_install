@@ -364,21 +364,65 @@ class ErrorProcessor:
     def __init__(self, parent):
         self.parent = parent
         self.errors = []
-
+        self.error_counts = {}
+        self.max_errors_per_source = 10
+        self.error_window = 300  # 5 minutes
+        
     def process_error(self, error, source):
-        """Process an error from any operation"""
+        """Process an error from any operation with rate limiting and categorization"""
+        now = time.time()
+        
+        # Clean up old errors
+        self.errors = [e for e in self.errors if now - e["timestamp"] < self.error_window]
+        
+        # Check error rate for this source
+        source_errors = [e for e in self.errors if e["source"] == source]
+        if len(source_errors) >= self.max_errors_per_source:
+            if now - source_errors[0]["timestamp"] < self.error_window:
+                self.parent.log_message(
+                    f"⚠️ Too many errors from {source} - Suppressing further errors"
+                )
+                return None
+        
+        # Create detailed error entry
         error_entry = {
-            "timestamp": time.time(),
+            "timestamp": now,
             "error": str(error),
-            "source": source
+            "error_type": type(error).__name__,
+            "source": source,
+            "original_error": error.original_error if hasattr(error, "original_error") else None,
+            "traceback": traceback.format_exc()
         }
+        
         self.errors.append(error_entry)
-        self.parent.log_message(f"Error in {source}: {error}")
+        self.error_counts[source] = self.error_counts.get(source, 0) + 1
+        
+        # Log error with context
+        error_msg = [
+            f"❌ Error in {source}: {error}",
+            f"Type: {error_entry['error_type']}"
+        ]
+        
+        if error_entry["original_error"]:
+            error_msg.append(f"Caused by: {type(error_entry['original_error']).__name__}")
+            
+        self.parent.log_message("\n".join(error_msg))
         return error_entry
 
     def get_latest_error(self):
         """Get the most recent error"""
         return self.errors[-1] if self.errors else None
+        
+    def get_error_summary(self):
+        """Get summary of recent errors"""
+        if not self.errors:
+            return "No recent errors"
+            
+        summary = []
+        for source, count in self.error_counts.items():
+            summary.append(f"{source}: {count} errors")
+            
+        return "\n".join(summary)
 
 class VoiceCommandProcessor:
     """Processes and manages voice commands"""
@@ -1049,14 +1093,37 @@ class AiderVoiceGUI:
                     self.log_message("🎙️🔴 Mic suppressed")
                     self.mic_active = False
             return (None, pyaudio.paContinue)
+            
         except ValueError as e:
-            self.log_message(f"Value error in mic callback: {e}")
+            error = AudioProcessingError(
+                "Invalid audio data format",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "audio")
             return (None, pyaudio.paContinue)
+            
         except RuntimeError as e:
-            self.log_message(f"Runtime error in mic callback: {e}")
+            error = AudioDeviceError(
+                "Audio device error - Check your microphone settings",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "audio")
             return (None, pyaudio.paContinue)
+            
         except OSError as e:
-            self.log_message(f"OS error in mic callback: {e}")
+            error = AudioDeviceError(
+                "System audio error - Try reconnecting your microphone",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "audio")
+            return (None, pyaudio.paContinue)
+            
+        except Exception as e:
+            error = AudioError(
+                f"Unexpected audio error: {type(e).__name__}",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "audio")
             return (None, pyaudio.paContinue)
 
     async def process_audio_thread(self):
@@ -1197,12 +1264,13 @@ class AiderVoiceGUI:
 
         except websockets.exceptions.InvalidStatusCode as e:
             error = WebSocketAuthenticationError(
-                f"Authentication failed with status {e.status_code}",
+                f"Authentication failed with status {e.status_code} - Check your API key and permissions",
                 original_error=e
             )
             self.error_processor.process_error(error, "websocket")
             self.ws_manager.connection_state = ConnectionState.FAILED
-            raise error
+            self.log_message("🔑 Authentication failed - Please check your OpenAI API key")
+            raise error from e
 
         except websockets.exceptions.WebSocketException as e:
             error = WebSocketConnectionError(

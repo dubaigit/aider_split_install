@@ -2,6 +2,58 @@
 
 class AiderError(Exception):
     """Base exception class for Aider Voice Assistant."""
+    
+    def __init__(self, message: str, original_error: Exception = None):
+        super().__init__(message)
+        self.original_error = original_error
+        self.timestamp = time.time()
+        
+    def __str__(self):
+        base_msg = super().__str__()
+        if self.original_error:
+            return f"{base_msg} (Caused by: {type(self.original_error).__name__}: {str(self.original_error)})"
+        return base_msg
+
+class AudioError(AiderError):
+    """Base class for audio-related errors."""
+    pass
+
+class AudioProcessingError(AudioError):
+    """Error during audio processing."""
+    pass
+
+class AudioDeviceError(AudioError):
+    """Error with audio input/output devices."""
+    pass
+
+class WebSocketError(AiderError):
+    """Base class for WebSocket-related errors."""
+    pass
+
+class WebSocketConnectionError(WebSocketError):
+    """Error establishing or maintaining WebSocket connection."""
+    pass
+
+class WebSocketTimeoutError(WebSocketError):
+    """WebSocket operation timed out."""
+    pass
+
+class WebSocketAuthenticationError(WebSocketError):
+    """WebSocket authentication failed."""
+    pass
+
+class StateError(AiderError):
+    """Error in application state management."""
+    pass
+
+class ValidationError(AiderError):
+    """Error in data validation."""
+    pass
+
+class ConfigurationError(AiderError):
+    """Error in application configuration."""
+    pass
+    """Base exception class for Aider Voice Assistant."""
     pass
 
 class AudioError(AiderError):
