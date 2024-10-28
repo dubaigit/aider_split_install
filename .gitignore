@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# Project specific
+aider_fix_instructions.txt
+aider_instructions.txt
+aider_new_instructions.txt
+aider_test/
+aider_url_fix_instructions.txt
+fix_instructions.txt
+fix_instructions.txt.bak
+fix_message_file.txt
+fix_print_issue.txt
+fix_temp_message_file.txt
+instructions.txt
+prompt.md
+update_instructions.txt
+update_integration.txt
