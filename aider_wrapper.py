@@ -1,42 +1,11 @@
-"""
-Aider Voice Assistant - A voice-controlled interface for the Aider code assistant.
+"""Main module for Aider Voice Assistant."""
 
-This module provides a graphical and voice-controlled interface for interacting with
-the Aider code assistant. It handles real-time audio processing, WebSocket communication
-with OpenAI's API, and provides a rich GUI for managing code files and issues.
-
-Key Features:
-- Voice command recognition and processing
-- Real-time audio streaming to OpenAI's API
-- GUI components for file management and issue tracking
-- Clipboard integration for code sharing
-- Asynchronous WebSocket communication
-- Performance monitoring and error handling
-
-Classes:
-    AudioBufferManager: Manages audio buffering and processing
-    PerformanceMonitor: Monitors and reports performance metrics
-    KeyboardShortcuts: Manages keyboard shortcuts
-    ResultProcessor: Processes and manages results from operations
-    ErrorProcessor: Processes and manages errors
-    VoiceCommandProcessor: Processes and manages voice commands
-    AiderVoiceGUI: Main GUI class for the voice assistant
-    AsyncTestCase: Base class for async tests
-    ClipboardManager: Manages clipboard monitoring
-    WebSocketManager: Manages WebSocket connections
-    ConnectionState: Enum for WebSocket connection states
-
-Dependencies:
-    Required:
-        - tkinter: GUI framework
-        - pyaudio: Audio processing
-        - websockets: WebSocket communication
-        - openai: OpenAI API client
-    Optional:
-        - numpy: Audio processing
-        - pyperclip: Clipboard functionality
-        - sounddevice: Voice functionality
-"""
+from aider_voice.core.audio import AudioBufferManager, CHUNK_SIZE, SAMPLE_RATE, CHANNELS, FORMAT, REENGAGE_DELAY_MS
+from aider_voice.core.performance import PerformanceMonitor
+from aider_voice.core.websocket import WebSocketManager, ConnectionState, OPENAI_WEBSOCKET_URL
+from aider_voice.core.clipboard import ClipboardManager
+from aider_voice.gui.keyboard import KeyboardShortcuts
+from aider_voice.gui.file_manager import FileManager
 
 # Standard library imports
 import argparse
