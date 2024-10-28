@@ -1,54 +1,132 @@
-# Aider Split Install
+# aider_split Usage Guide (Max 5 Concurrent Tasks)
 
-A multi-threaded tool designed to enhance AI development workflows using aider. This tool allows concurrent execution of aider tasks, improving development efficiency and productivity.
-
-## Features
-
-- **Concurrent Task Execution**: Run multiple aider tasks simultaneously using Python's asyncio
-- **Configurable Concurrency**: Set maximum concurrent tasks via command line arguments
-- **Smart File Handling**: Validates file existence before processing
-- **Structured Task Management**: Organized approach to handling multiple development tasks
-- **ANSI Color Support**: Enhanced terminal output with color-coded messages
-
-## Installation
-
+## Quick Start
 ```bash
-# Clone the repository
-git clone [your-repo-url]
-cd aider-split-install
+# Install globally
+aider_split --setup-bin
 
-# Make the script executable (Unix-like systems)
-chmod +x aider_split_install.py
-
-# Optional: Set up as a binary (requires --setup-bin flag)
-python aider_split_install.py --setup-bin
+# Run with 5 concurrent tasks
+aider_split --max-concurrent 5 file1.py file2.py file3.py file4.py file5.py
 ```
 
-## Usage
+## Writing fix_instructions.txt for Parallel Processing
 
-```bash
-python aider_split_install.py [OPTIONS] file1.py file2.py ...
+### Example with 5 Concurrent Tasks:
+```
+1. Update user authentication (auth.py)
+- Target: auth.py
+- Location:
+  * Class: Authentication
+  * Method: verify_token, create_token
+  * Add imports: from jwt import encode, decode
+- Changes:
+  * Implement JWT token handling
+  * Add token expiration
+  * Add refresh token logic
+- Expected: JWT-based auth with refresh tokens
 
-Options:
-  --max-concurrent N    Set maximum number of concurrent tasks (default: 5)
-  --setup-bin          Set up the script as a binary
-  --help              Show help message
+2. Enhance database models (models.py)
+- Target: models.py
+- Location:
+  * Class: BaseModel
+  * Method: __init__, save
+  * Add imports: from sqlalchemy.sql import func
+- Changes:
+  * Add timestamps (created_at, updated_at)
+  * Add soft delete functionality
+  * Add schema validation
+- Expected: Improved model with tracking
+
+3. Implement caching (cache.py)
+- Target: cache.py
+- Location:
+  * Class: CacheManager
+  * Method: get_or_set
+  * Add imports: from redis import Redis
+- Changes:
+  * Add Redis connection
+  * Implement cache expiry
+  * Add cache invalidation
+- Expected: Redis-based caching system
+
+4. Add API rate limiting (middleware.py)
+- Target: middleware.py
+- Location:
+  * Class: RateLimiter
+  * Method: check_limit
+  * Add imports: import time, threading
+- Changes:
+  * Implement token bucket algorithm
+  * Add user-based limits
+  * Add burst handling
+- Expected: Flexible rate limiting
+
+5. Update logging system (logger.py)
+- Target: logger.py
+- Location:
+  * Class: CustomLogger
+  * Method: log_request
+  * Add imports: import structlog
+- Changes:
+  * Add structured logging
+  * Add request tracing
+  * Add performance metrics
+- Expected: Comprehensive logging system
 ```
 
-## Example
+### Tips for 5 Concurrent Tasks:
+1. **File Independence**
+   - Each task should work on different files
+   - Avoid interdependent changes
+   - Clearly specify file boundaries
 
+2. **Resource Usage**
+   - Each task gets its own aider instance
+   - Monitor system resources
+   - Consider memory usage
+
+3. **Task Organization**
+   ```
+   Task 1 (auth.py):      Authentication changes
+   Task 2 (models.py):    Database model updates
+   Task 3 (cache.py):     Caching implementation
+   Task 4 (middleware.py): Rate limiting
+   Task 5 (logger.py):    Logging system
+   ```
+
+## Running Tasks
+
+### Basic Command
 ```bash
-# Run with default settings
-python aider_split_install.py app.py utils.py models.py
-
-# Run with custom concurrency
-python aider_split_install.py --max-concurrent 3 app.py utils.py models.py
+aider_split --max-concurrent 5 *.py
 ```
 
-## Task Format
+### With Specific Files
+```bash
+aider_split --max-concurrent 5 auth.py models.py cache.py middleware.py logger.py
+```
 
-Tasks should be structured in a specific format for optimal processing:
+### Progress Display
+```
+==================== 🟢 STARTING TASK 1 ====================
+[Auth updates running...]
 
+==================== 🟢 STARTING TASK 2 ====================
+[Model updates running...]
+
+==================== 🟢 STARTING TASK 3 ====================
+[Cache implementation running...]
+
+==================== 🟢 STARTING TASK 4 ====================
+[Rate limiting running...]
+
+==================== 🟢 STARTING TASK 5 ====================
+[Logging updates running...]
+```
+
+## Task Template for Each File
+
+### Template Structure:
 ```
 [task number]. [task title] ([filename])
 - Target: [filename]
@@ -68,12 +146,6 @@ Tasks should be structured in a specific format for optimal processing:
 - Expected: [expected outcome]
 ```
 
-## Progress Monitoring
-- Real-time status updates for concurrent tasks
-- Color-coded output for better visibility
-- Clear task boundaries and progress indicators
-- Success/failure status for each task
-
 ## Efficiency Tips
 
 1. **Parallel Planning**
@@ -82,14 +154,25 @@ Tasks should be structured in a specific format for optimal processing:
    - Distribute work evenly
 
 2. **Resource Management**
-   - Monitor system resources
-   - Adjust concurrent tasks if needed
-   - Each task has its own memory space
+   - 5 concurrent tasks use more memory
+   - Monitor system performance
+   - Adjust if needed
 
 3. **Error Handling**
-   - Isolated error handling per task
+   - Each task has isolated error handling
    - Failed tasks don't affect others
    - Easy to retry specific tasks
+
+## Command Reference
+```bash
+# Full options
+aider_split --help
+
+Options:
+  --max-concurrent 5   Run 5 tasks simultaneously
+  --setup-bin         Install globally
+  --help, -h         Show this help message
+```
 
 ## Common Use Cases
 
@@ -107,6 +190,14 @@ aider_split --max-concurrent 5 auth.py models.py cache.py
 ```bash
 aider_split --max-concurrent 5 tests/*.py
 ```
+
+## Progress Monitoring
+- Real-time status for 5 concurrent tasks
+- Color-coded output
+- Clear task boundaries
+- Success/failure indicators
+
+Need any clarification or specific examples?
 
 ## Contributing
 
