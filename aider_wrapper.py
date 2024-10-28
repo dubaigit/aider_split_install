@@ -1578,13 +1578,15 @@ class WebSocketManager:
                     f"Valid transitions are:\n" + "\n".join(f"- {t}" for t in valid_transitions)
                 )
 
+            # Get transition reason first
+            transition_reason = self._state_transitions[self._state][new_state]
+
             # Track error state
             if new_state == ConnectionState.ERROR:
                 self.last_error = transition_reason
                 self.error_time = time.time()
             
-            # Get transition reason and update state
-            transition_reason = self._state_transitions[self._state][new_state]
+            # Update state
             self._state = new_state
 
             # Handle connection state changes
