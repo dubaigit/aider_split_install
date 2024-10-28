@@ -21,11 +21,11 @@ from aider_wrapper import (
     ConnectionState
 )
 from test_utils import (
+    AsyncMock,
     create_mock_args,
     create_gui_app,
     create_buffer_manager,
-    create_performance_monitor,
-    AsyncMock
+    create_performance_monitor
 )
 
 class AsyncTestCase(unittest.IsolatedAsyncioTestCase):
