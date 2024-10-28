@@ -1264,12 +1264,40 @@ class TestVoiceCommandProcessor(AsyncTestCase):
         self.assertFalse(await self.processor.validate_command("test profanity2"))
         self.assertTrue(await self.processor.validate_command("normal command"))
 
-class TestArgumentParsing(AsyncTestCase):
+class TestArgumentParsing(unittest.TestCase):
     """Test command line argument parsing"""
+
+    def setUp(self):
+        """Set up test environment"""
+        self.parser_patcher = patch('argparse.ArgumentParser')
+        self.mock_parser = self.parser_patcher.start()
+        self.mock_args = MagicMock()
+        self.mock_parser.return_value.parse_args.return_value = self.mock_args
+
+    def tearDown(self):
+        """Clean up test environment"""
+        self.parser_patcher.stop()
 
     def test_default_arguments(self):
         """Test default argument values"""
+        # Set up default argument values
+        self.mock_args.voice_only = False
+        self.mock_args.instructions = None
+        self.mock_args.clipboard = False
+        self.mock_args.filenames = []
+        self.mock_args.chat_mode = "code"
+        self.mock_args.suggest_shell_commands = False
+        self.mock_args.model = None
+        self.mock_args.gui = False
+        self.mock_args.auto = False
+
         args = AiderVoiceGUI.parse_arguments([])
+        
+        # Verify parser configuration
+        self.mock_parser.assert_called_once()
+        self.assertEqual(self.mock_parser.return_value.parse_args.call_count, 1)
+        
+        # Verify argument values
         self.assertFalse(args.voice_only)
         self.assertIsNone(args.instructions)
         self.assertFalse(args.clipboard)
@@ -1282,6 +1310,17 @@ class TestArgumentParsing(AsyncTestCase):
 
     def test_custom_arguments(self):
         """Test custom argument values"""
+        # Set up expected argument values
+        self.mock_args.voice_only = True
+        self.mock_args.instructions = "instructions.txt"
+        self.mock_args.clipboard = True
+        self.mock_args.filenames = ["file1.py", "file2.py"]
+        self.mock_args.chat_mode = "ask"
+        self.mock_args.suggest_shell_commands = True
+        self.mock_args.model = "gpt-4"
+        self.mock_args.gui = True
+        self.mock_args.auto = True
+
         test_args = [
             "--voice-only",
             "-i", "instructions.txt",
@@ -1293,7 +1332,13 @@ class TestArgumentParsing(AsyncTestCase):
             "--auto",
             "file1.py", "file2.py"
         ]
+        
         args = AiderVoiceGUI.parse_arguments(test_args)
+        
+        # Verify parser was called with correct arguments
+        self.mock_parser.return_value.parse_args.assert_called_once_with(test_args)
+        
+        # Verify all argument values
         self.assertTrue(args.voice_only)
         self.assertEqual(args.instructions, "instructions.txt")
         self.assertTrue(args.clipboard)
@@ -1303,6 +1348,20 @@ class TestArgumentParsing(AsyncTestCase):
         self.assertEqual(args.model, "gpt-4")
         self.assertTrue(args.gui)
         self.assertTrue(args.auto)
+
+    def test_invalid_chat_mode(self):
+        """Test handling of invalid chat mode"""
+        self.mock_parser.return_value.parse_args.side_effect = SystemExit(2)
+        
+        with self.assertRaises(SystemExit):
+            AiderVoiceGUI.parse_arguments(["--chat-mode", "invalid"])
+
+    def test_help_flag(self):
+        """Test help flag triggers system exit"""
+        self.mock_parser.return_value.parse_args.side_effect = SystemExit(0)
+        
+        with self.assertRaises(SystemExit):
+            AiderVoiceGUI.parse_arguments(["--help"])
 
 class TestGUIEventHandlers(AsyncTestCase):
     """Test GUI event handlers and keyboard shortcuts"""
@@ -1582,10 +1641,23 @@ class WebSocketManager:
             return False
 
 
-@staticmethod
-def parse_arguments(args=None):
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
+@classmethod
+def parse_arguments(cls, args=None):
+    """Parse command line arguments with proper error handling
+    
+    Args:
+        args: List of command line arguments to parse
+        
+    Returns:
+        argparse.Namespace: Parsed command line arguments
+        
+    Raises:
+        SystemExit: If invalid arguments are provided
+    """
+    parser = argparse.ArgumentParser(
+        description="Voice-controlled Aider wrapper",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     parser.add_argument(
         "--voice-only", action="store_true", help="Run in voice control mode only"
     )
