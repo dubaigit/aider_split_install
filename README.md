@@ -47,14 +47,65 @@ python aider_split_install.py --max-concurrent 3 app.py utils.py models.py
 
 ## Task Format
 
-The tool expects tasks to be structured in a specific format for optimal processing:
+Tasks should be structured in a specific format for optimal processing:
 
 ```
-1. [Task Title]
+[task number]. [task title] ([filename])
 - Target: [filename]
-- Location: [specific location in code]
-- Changes: [list of changes]
-- Expected: [expected behavior]
+- Location:
+  * Package: [package name]
+  * Module: [module name]
+  * Class: [class name]
+  * Method: [method name(s)]
+  * Section: [specific code section]
+- Changes:
+  * [detailed change 1]
+  * [detailed change 2]
+  * [detailed change 3]
+- Dependencies:
+  * Add: [new imports/requirements]
+  * Remove: [old imports/code]
+- Expected: [expected outcome]
+```
+
+## Progress Monitoring
+- Real-time status updates for concurrent tasks
+- Color-coded output for better visibility
+- Clear task boundaries and progress indicators
+- Success/failure status for each task
+
+## Efficiency Tips
+
+1. **Parallel Planning**
+   - Group related changes by file
+   - Ensure changes don't conflict
+   - Distribute work evenly
+
+2. **Resource Management**
+   - Monitor system resources
+   - Adjust concurrent tasks if needed
+   - Each task has its own memory space
+
+3. **Error Handling**
+   - Isolated error handling per task
+   - Failed tasks don't affect others
+   - Easy to retry specific tasks
+
+## Common Use Cases
+
+1. **Full System Update**
+```bash
+aider_split --max-concurrent 5 src/*.py
+```
+
+2. **Selected Files**
+```bash
+aider_split --max-concurrent 5 auth.py models.py cache.py
+```
+
+3. **Test Files**
+```bash
+aider_split --max-concurrent 5 tests/*.py
 ```
 
 ## Contributing
