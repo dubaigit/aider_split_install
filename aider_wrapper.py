@@ -1480,13 +1480,13 @@ from enum import Enum, auto
 
 class ConnectionState(Enum):
     """Enum for WebSocket connection states"""
-    DISCONNECTED = auto()
-    CONNECTING = auto() 
-    CONNECTED = auto()
-    RECONNECTING = auto()
-    FAILED = auto()
-    ERROR = auto()
-    CLOSING = auto()
+    DISCONNECTED = auto()  # Initial state or after clean disconnect
+    CONNECTING = auto()    # Attempting initial connection
+    CONNECTED = auto()     # Successfully connected
+    RECONNECTING = auto()  # Attempting to restore lost connection
+    FAILED = auto()        # Connection attempts exhausted
+    ERROR = auto()         # Unexpected error state
+    CLOSING = auto()       # Clean shutdown in progress
 
 class WebSocketManager:
     """Manages WebSocket connection state and monitoring"""
@@ -1501,33 +1501,45 @@ class WebSocketManager:
         self.monitoring_task = None
         self.log_message = parent.log_message
         self.ws = parent.ws
-        # Define valid state transitions
+        # Define valid state transitions with reasons
         self._state_transitions = {
             ConnectionState.DISCONNECTED: {
                 ConnectionState.CONNECTING: "Initial connection attempt",
-                ConnectionState.FAILED: "Connection initialization failed"
+                ConnectionState.FAILED: "Connection initialization failed",
+                ConnectionState.ERROR: "Unexpected error during initialization"
             },
             ConnectionState.CONNECTING: {
                 ConnectionState.CONNECTED: "Connection established successfully", 
                 ConnectionState.FAILED: "Connection attempt failed",
+                ConnectionState.ERROR: "Error during connection attempt",
                 ConnectionState.DISCONNECTED: "Connection attempt cancelled"
             },
             ConnectionState.CONNECTED: {
                 ConnectionState.CLOSING: "Connection closing normally",
                 ConnectionState.RECONNECTING: "Connection lost unexpectedly",
-                ConnectionState.FAILED: "Connection failed unexpectedly"
+                ConnectionState.ERROR: "Unexpected connection error",
+                ConnectionState.FAILED: "Connection failed unexpectedly",
+                ConnectionState.DISCONNECTED: "Connection terminated"
             },
             ConnectionState.RECONNECTING: {
                 ConnectionState.CONNECTED: "Reconnection successful",
                 ConnectionState.FAILED: "Reconnection attempts exhausted",
+                ConnectionState.ERROR: "Error during reconnection",
                 ConnectionState.DISCONNECTED: "Reconnection cancelled"
             },
             ConnectionState.FAILED: {
                 ConnectionState.CONNECTING: "Retrying connection after failure",
-                ConnectionState.DISCONNECTED: "Connection permanently failed"
+                ConnectionState.DISCONNECTED: "Connection permanently failed",
+                ConnectionState.ERROR: "Critical error after failure"
+            },
+            ConnectionState.ERROR: {
+                ConnectionState.CONNECTING: "Attempting recovery from error",
+                ConnectionState.DISCONNECTED: "Shutting down after error",
+                ConnectionState.FAILED: "Error recovery failed"
             },
             ConnectionState.CLOSING: {
                 ConnectionState.DISCONNECTED: "Connection closed normally",
+                ConnectionState.ERROR: "Error during close",
                 ConnectionState.FAILED: "Close operation failed"
             }
         }
