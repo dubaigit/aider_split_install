@@ -1,8 +1,7 @@
 import unittest
 import asyncio
 import tkinter as tk
-from unittest.mock import MagicMock, patch, AsyncMock
-import sys
+from unittest.mock import MagicMock, patch
 import json
 import time
 from queue import Queue
@@ -10,15 +9,23 @@ import websockets
 import pyaudio
 import pyperclip
 from contextlib import contextmanager
+
 from aider_wrapper import (
-    AiderVoiceGUI,
+    AiderVoiceGUI, 
     AudioBufferManager,
     AudioProcessingError,
     PerformanceMonitor,
     WebSocketManager,
     VoiceCommandProcessor,
     ClipboardManager,
-    ConnectionState,
+    ConnectionState
+)
+from test_utils import (
+    create_mock_args,
+    create_gui_app,
+    create_buffer_manager,
+    create_performance_monitor,
+    AsyncMock
 )
 
 class AsyncTestCase(unittest.TestCase):
