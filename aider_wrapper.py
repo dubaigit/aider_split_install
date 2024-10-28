@@ -50,6 +50,48 @@ REQUIRED_PACKAGES = {
     'websockets': 'Voice functionality'
 }
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Type hints for decorator
+P = ParamSpec('P')
+T = TypeVar('T')
+
+def exception_handler(func: Callable[P, T]) -> Callable[P, T]:
+    """Decorator for consistent exception handling and logging."""
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(
+                f"Error in {func.__name__}: {type(e).__name__}\n"
+                f"Details: {str(e)}\n"
+                f"Traceback:\n{traceback.format_exc()}"
+            )
+            raise
+    return wrapper
+
+def async_exception_handler(func: Callable[P, T]) -> Callable[P, T]:
+    """Decorator for consistent async exception handling and logging."""
+    @functools.wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.error(
+                f"Error in {func.__name__}: {type(e).__name__}\n"
+                f"Details: {str(e)}\n"
+                f"Traceback:\n{traceback.format_exc()}"
+            )
+            raise
+    return wrapper
+
+@exception_handler
 def check_imports() -> None:
     """Check required package imports and print warnings."""
     missing = []
@@ -252,15 +294,21 @@ class ClipboardManager:
         """Check if content appears to be a URL"""
         return content.startswith(("http://", "https://", "www."))
 
+    @async_exception_handler
     async def monitor_clipboard(self):
         """Monitor clipboard for changes"""
         self.monitoring = True
         while self.monitoring:
-            current_content = pyperclip.paste()
-            if current_content != self.previous_content:
-                content_type = self.detect_content_type(current_content)
-                await self.processors[content_type](current_content)
-                self.previous_content = current_content
+            try:
+                current_content = pyperclip.paste()
+                if current_content != self.previous_content:
+                    content_type = self.detect_content_type(current_content)
+                    await self.processors[content_type](current_content)
+                    self.previous_content = current_content
+            except Exception as e:
+                self.log_message(f"Error monitoring clipboard: {e}")
+                await asyncio.sleep(5)  # Back off on error
+                continue
             await asyncio.sleep(0.5)
 
     def process_code(self, content):
@@ -431,9 +479,16 @@ class AiderVoiceGUI:
 
     def __init__(self, root):
         """Initialize the AiderVoiceGUI."""
+        # Set up logging
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.INFO)
+        
         # Store root window
         self.root = root
         self.root.title("Aider Voice Assistant")
+        
+        # Set up resource cleanup
+        self.root.protocol("WM_DELETE_WINDOW", self.cleanup_resources)
 
         # Parse command line arguments
         self.args = self.parse_arguments()
@@ -818,27 +873,59 @@ class AiderVoiceGUI:
         # Connect to OpenAI WebSocket
         asyncio.run_coroutine_threadsafe(self.connect_websocket(), self.loop)
 
+    @exception_handler
+    def cleanup_resources(self):
+        """Clean up resources before exit"""
+        try:
+            # Stop voice control if active
+            if self.recording:
+                self.stop_voice_control()
+            
+            # Clean up temp files
+            for temp_file in self.temp_files:
+                try:
+                    os.remove(temp_file)
+                except OSError as e:
+                    self.logger.warning(f"Failed to remove temp file {temp_file}: {e}")
+            
+            # Stop event loop
+            if self.loop and self.loop.is_running():
+                self.loop.stop()
+            
+            # Destroy root window
+            self.root.destroy()
+            
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+            raise
+
+    @exception_handler 
     def stop_voice_control(self):
         """Stop voice control"""
-        self.recording = False
-        # self.voice_button.configure(text="🎤 Start Voice Control")
-        self.status_label.configure(text="Ready")
+        try:
+            self.recording = False
+            self.status_label.configure(text="Ready")
 
-        # Stop audio streams
-        if hasattr(self, "mic_stream"):
-            self.mic_stream.stop_stream()
-            self.mic_stream.close()
-        if hasattr(self, "spkr_stream"):
-            self.spkr_stream.stop_stream()
-            self.spkr_stream.close()
+            # Stop audio streams
+            if hasattr(self, "mic_stream"):
+                self.mic_stream.stop_stream()
+                self.mic_stream.close()
+            if hasattr(self, "spkr_stream"):
+                self.spkr_stream.stop_stream()
+                self.spkr_stream.close()
 
-        # Close WebSocket connection
-        if self.ws:
-            asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
-            self.ws = None
+            # Close WebSocket connection
+            if self.ws:
+                asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)
+                self.ws = None
 
-        # Terminate PyAudio
-        self.p.terminate()
+            # Terminate PyAudio
+            if hasattr(self, "p"):
+                self.p.terminate()
+                
+        except Exception as e:
+            self.logger.error(f"Error stopping voice control: {e}")
+            raise
 
     async def handle_mic_input(
         self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int
