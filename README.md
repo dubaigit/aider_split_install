@@ -174,6 +174,36 @@ Options:
   --help, -h         Show this help message
 ```
 
+## Running with Custom Instructions
+
+You can run aider_split directly with custom instructions without installing it globally. This is useful for one-off tasks or testing. Here's an example workflow:
+
+1. **Create Custom Instructions**:
+   Create a `fix_instructions.txt` with the following structure:
+   ```
+   1. [Task Title]
+   - Specific goal/outcome 
+   - Any constraints or requirements
+   - Expected behavior
+   - Files to modify
+   ```
+
+2. **Run Directly**:
+   ```bash
+   python3 aider_split.py file1.py file2.py
+   ```
+
+3. **Process Flow**:
+   - Reads and analyzes specified files
+   - Follows instructions in fix_instructions.txt
+   - Applies changes in parallel
+   - Verifies modifications
+
+4. **Verification**:
+   - Review changes after completion
+   - Update instructions if needed
+   - Rerun for any remaining fixes
+
 ## Common Use Cases
 
 1. **Full System Update**
