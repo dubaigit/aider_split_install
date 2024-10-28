@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import unittest
+from .exceptions import *
 from unittest.mock import patch, MagicMock
 import base64
 import json
@@ -171,22 +172,7 @@ class KeyboardShortcuts:
             self.parent.root.bind(key, lambda e, f=func: f())
 
 
-class AudioProcessingError(Exception):
-    """Custom exception for audio processing errors"""
-
-class WebSocketConnectionError(Exception):
-    """Custom exception for WebSocket connection errors"""
-    def __init__(self, message, original_error=None):
-        super().__init__(message)
-        self.original_error = original_error
-
-class WebSocketTimeoutError(WebSocketConnectionError):
-    """Custom exception for WebSocket timeout errors"""
-    pass
-
-class WebSocketAuthenticationError(WebSocketConnectionError):
-    """Custom exception for WebSocket authentication errors"""
-    pass
+# Using exceptions from exceptions.py instead
 
 
 class ResultProcessor:
@@ -895,9 +881,10 @@ class AiderVoiceGUI:
             return True
 
         except websockets.exceptions.InvalidStatusCode as e:
-            self.log_message(f"❌ Authentication failed: {e.status_code}")
+            error = AuthenticationError(f"Authentication failed with status {e.status_code}")
+            self.error_processor.process_error(error, "websocket")
             self.ws_manager.connection_state = ConnectionState.FAILED
-            raise WebSocketAuthenticationError(f"Authentication failed with status {e.status_code}")
+            raise error
 
         except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
             self.log_message(f"❌ Connection failed: {type(e).__name__}: {str(e)}")
@@ -935,9 +922,20 @@ class AiderVoiceGUI:
                             )
                         )
                 except websockets.exceptions.WebSocketException as e:
-                    self.log_message(f"WebSocket error sending audio data: {e}")
+                    self.error_processor.process_error(
+                        ConnectionError(f"WebSocket error sending audio data: {e}"),
+                        "audio_processing"
+                    )
                 except json.JSONDecodeError as e:
-                    self.log_message(f"JSON decode error sending audio data: {e}")
+                    self.error_processor.process_error(
+                        ValidationError(f"Invalid JSON in audio data: {e}"),
+                        "audio_processing"
+                    )
+                except Exception as e:
+                    self.error_processor.process_error(
+                        AudioError(f"Unexpected error sending audio data: {e}"),
+                        "audio_processing"
+                    )
 
                 await asyncio.sleep(0.05)
             except (ValueError, RuntimeError) as e:
@@ -1567,7 +1565,7 @@ class WebSocketManager:
         old_state = self._state
         try:
             if not isinstance(new_state, ConnectionState):
-                raise ValueError(f"Invalid state type: {type(new_state)}")
+                raise StateError(f"Invalid state type: {type(new_state)}")
             
             # Validate state transition
             if new_state not in self._state_transitions[self._state]:
