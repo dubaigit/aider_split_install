@@ -10,7 +10,9 @@ import threading
 import time
 import unittest
 from contextlib import contextmanager
+from queue import Empty as QueueEmpty, Queue
 from enum import Enum, auto
+from unittest.mock import MagicMock, patch
 from queue import Empty as QueueEmpty, Queue
 from pathlib import Path
 from unittest.mock import MagicMock, patch
