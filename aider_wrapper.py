@@ -284,7 +284,7 @@ class ClipboardManager:
             content_type = self.detect_content_type(content)
             return self.processors[content_type](content)
         except Exception as e:
-            self.log_message(f"Error getting clipboard content: {e}")
+            self._log_message(f"Error getting clipboard content: {e}")
             return ""
 
     def detect_content_type(self, content):
@@ -316,7 +316,7 @@ class ClipboardManager:
                     await self.processors[content_type](current_content)
                     self.previous_content = current_content
             except Exception as e:
-                self.log_message(f"Error monitoring clipboard: {e}")
+                self._log_message(f"Error monitoring clipboard: {e}")
                 await asyncio.sleep(5)  # Back off on error
                 continue
             await asyncio.sleep(0.5)
@@ -1529,15 +1529,23 @@ class ClipboardManager:
     """Manages clipboard monitoring and content processing"""
 
     def __init__(self, parent):
+        # Parent reference and core functionality
         self.parent = parent
+        self.interface_state = parent.interface_state
+        
+        # Initialize logger
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.INFO)
+        
+        # Clipboard state
         self.previous_content = ""
         self.monitoring = False
         self.monitoring_task = None
         self.update_interval = 0.5  # seconds
         self.max_content_size = 1024 * 1024  # 1MB
         self.history = []
-        self.interface_state = parent.interface_state
-        self.log_message = parent.log_message
+        
+        # Content processors
         self.processors = {
             "code": self.process_code,
             "text": self.process_text,
@@ -1560,48 +1568,18 @@ class ClipboardManager:
         content_type = self.detect_content_type(content)
         return self.processors[content_type](content)
 
-    def log_message(self, message: str):
-        """Log a message to both the logger and GUI output.
+    def _log_message(self, message: str):
+        """Internal method to log messages.
         
         Args:
             message: Message to log
         """
-        try:
-            # Log to system logger
-            self.logger.info(message)
-            
-            # Log to GUI if available
-            if hasattr(self, 'output_text'):
-                # Add timestamp
-                timestamp = time.strftime("%H:%M:%S", time.localtime())
-                formatted_message = f"[{timestamp}] {message}\n"
-                
-                # Update GUI in thread-safe way
-                self.root.after(0, self._update_log_gui, formatted_message)
-        except Exception as e:
-            # Fallback to print if logging fails
-            print(f"Logging error: {e}")
-            print(f"Original message: {message}")
-
-    def _update_log_gui(self, message: str):
-        """Update GUI log in a thread-safe way.
+        # Log through parent's logging mechanism
+        self.parent.log_message(message)
         
-        Args:
-            message: Message to add to log
-        """
-        try:
-            self.output_text.insert(tk.END, message)
-            self.output_text.see(tk.END)
-            
-            # Keep log size manageable
-            content = self.output_text.get('1.0', tk.END)
-            if len(content.split('\n')) > 1000:  # Keep last 1000 lines
-                lines = content.split('\n')
-                self.output_text.delete('1.0', tk.END)
-                self.output_text.insert('1.0', '\n'.join(lines[-1000:]))
-        except Exception as e:
-            print(f"GUI update error: {e}")
-            print(f"Message that failed: {message}")
+        # Also log to class logger
+        self.logger.info(message)
+
 
     def detect_content_type(self, content):
         """Detect the type of clipboard content"""
