@@ -403,7 +403,7 @@ class AiderVoiceGUI:
             
             # Create argument groups for better organization
             voice_group = cls._parser.add_argument_group('Voice Control Options')
-            input_group = cls._parser.add_argument_group('Input Options') 
+            input_group = cls._parser.add_argument_group('Input Options')
             behavior_group = cls._parser.add_argument_group('Behavior Options')
             interface_group = cls._parser.add_argument_group('Interface Options')
             
@@ -1768,8 +1768,14 @@ class WebSocketManager:
             
             # Validate state transition
             if new_state not in self._state_transitions[self._state]:
-                valid_transitions = [f"{s.name} ({reason})" for s, reason in self._state_transitions[self._state].items()]
-                self.log_message(f"⚠️ Invalid state transition attempted: {self._state.name} -> {new_state.name}")
+                valid_transitions = [
+                    f"{s.name} ({reason})"
+                    for s, reason in self._state_transitions[self._state].items()
+                ]
+                self.log_message(
+                    f"⚠️ Invalid state transition attempted: "
+                    f"{self._state.name} -> {new_state.name}"
+                )
                 raise ValueError(
                     f"Invalid state transition from {self._state.name} to {new_state.name}.\n"
                     f"Valid transitions are:\n" + "\n".join(f"- {t}" for t in valid_transitions)
