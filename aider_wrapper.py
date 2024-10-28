@@ -1420,10 +1420,10 @@ class WebSocketManager:
         self.ws = parent.ws
         self._state_transitions = {
             ConnectionState.DISCONNECTED: [ConnectionState.CONNECTING],
-            ConnectionState.CONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED],
-            ConnectionState.CONNECTED: [ConnectionState.DISCONNECTED],
-            ConnectionState.RECONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED],
-            ConnectionState.FAILED: [ConnectionState.CONNECTING]
+            ConnectionState.CONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED, ConnectionState.RECONNECTING],
+            ConnectionState.CONNECTED: [ConnectionState.DISCONNECTED, ConnectionState.RECONNECTING],
+            ConnectionState.RECONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED, ConnectionState.DISCONNECTED],
+            ConnectionState.FAILED: [ConnectionState.CONNECTING, ConnectionState.DISCONNECTED]
         }
 
     @property 
@@ -1433,18 +1433,30 @@ class WebSocketManager:
 
     @connection_state.setter
     def connection_state(self, new_state):
-        """Set connection state with validation"""
+        """Set connection state with validation and logging"""
         if not isinstance(new_state, ConnectionState):
             raise ValueError(f"Invalid state type: {type(new_state)}")
             
         if new_state not in self._state_transitions[self._state]:
+            self.log_message(f"⚠️ Invalid state transition attempted: {self._state.name} -> {new_state.name}")
             raise ValueError(
-                f"Invalid state transition from {self._state} to {new_state}"
+                f"Invalid state transition from {self._state.name} to {new_state.name}. "
+                f"Valid transitions are: {[s.name for s in self._state_transitions[self._state]]}"
             )
             
         old_state = self._state
         self._state = new_state
-        self.log_message(f"WebSocket state changed: {old_state.name} -> {new_state.name}")
+        
+        # Log state change with appropriate emoji
+        emoji_map = {
+            ConnectionState.CONNECTED: "✅",
+            ConnectionState.DISCONNECTED: "❌",
+            ConnectionState.CONNECTING: "🔄",
+            ConnectionState.RECONNECTING: "🔁",
+            ConnectionState.FAILED: "💥"
+        }
+        emoji = emoji_map.get(new_state, "")
+        self.log_message(f"{emoji} WebSocket state changed: {old_state.name} -> {new_state.name}")
 
     async def start_monitoring(self):
         """Start connection monitoring"""
