@@ -405,9 +405,6 @@ class AiderVoiceGUI:
         self.root = root
         self.root.title("Aider Voice Assistant")
 
-        # Initialize all instance attributes to None/empty first
-        self._init_attributes()
-
         # Parse command line arguments
         self.args = self.parse_arguments()
 
@@ -421,11 +418,75 @@ class AiderVoiceGUI:
             "command_history": [],  # Track command history
         }
 
-        # Initialize components in dependency order
-        self._init_queues()
-        self._init_audio()
-        self._init_managers()
-        self._init_async()
+        # GUI components
+        self.main_frame = None
+        self.left_panel = None
+        self.control_frame = None
+        self.status_label = None
+        self.add_files_button = None
+        self.check_issues_button = None
+        self.files_frame = None
+        self.files_listbox = None
+        self.remove_file_button = None
+        self.input_frame = None
+        self.input_text = None
+        self.clipboard_button = None
+        self.send_button = None
+        self.right_panel = None
+        self.transcription_frame = None
+        self.transcription_text = None
+        self.issues_frame = None
+        self.issues_text = None
+        self.log_frame = None
+        self.output_text = None
+
+        # Queue components
+        self.mic_queue = Queue()
+        self.audio_queue = Queue()
+
+        # Audio components
+        self.audio_buffer = bytearray()
+        self.mic_stream = None
+        self.spkr_stream = None
+        self.chunk_buffer = []
+        self.chunk_buffer_size = 5
+        self.audio_thread = None
+        self.p = pyaudio.PyAudio()
+
+        # State tracking
+        self.response_active = False
+        self.last_transcript_id = None
+        self.last_audio_time = time.time()
+        self.recording = False
+        self.auto_mode = False
+        self.running = True
+        self.fixing_issues = False
+        self.mic_active = False
+        self.mic_on_at = 0
+        self.stop_event = threading.Event()
+        self.log_frequency = 50
+        self.log_counter = 0
+
+        # API clients
+        self.client = OpenAI() if OpenAI else None
+        self.ws = None
+        self.aider_process = None
+        self.temp_files = []
+
+        # Async components
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
+
+        # Initialize managers
+        self.clipboard_manager = ClipboardManager(self)
+        self.result_processor = ResultProcessor(self)
+        self.error_processor = ErrorProcessor(self)
+        self.ws_manager = WebSocketManager(self)
+        self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
+        self.keyboard_shortcuts = KeyboardShortcuts(self)
+
+        # Start async thread
+        self.thread.start()
 
         # Setup GUI components last if enabled
         if self.args.gui:
@@ -1762,80 +1823,3 @@ if __name__ == "__main__":
     main()
 
 
-    def _init_queues(self):
-        """Initialize queue components"""
-        self.mic_queue = Queue()
-        self.audio_queue = Queue()
-
-    def _init_audio(self):
-        """Initialize audio components"""
-        self.audio_buffer = bytearray()
-        self.mic_stream = None
-        self.spkr_stream = None
-        self.chunk_buffer = []
-        self.chunk_buffer_size = 5
-        self.audio_thread = None
-        self.p = pyaudio.PyAudio()
-
-    def _init_attributes(self):
-        """Initialize all instance attributes to None/empty values"""
-        # GUI components
-        self.main_frame = None
-        self.left_panel = None
-        self.control_frame = None
-        self.status_label = None
-        self.add_files_button = None
-        self.check_issues_button = None
-        self.files_frame = None
-        self.files_listbox = None
-        self.remove_file_button = None
-        self.input_frame = None
-        self.input_text = None
-        self.clipboard_button = None
-        self.send_button = None
-        self.right_panel = None
-        self.transcription_frame = None
-        self.transcription_text = None
-        self.issues_frame = None
-        self.issues_text = None
-        self.log_frame = None
-        self.output_text = None
-
-        # State tracking
-        self.response_active = False
-        self.last_transcript_id = None
-        self.last_audio_time = time.time()
-        self.recording = False
-        self.auto_mode = False
-        self.running = True
-        self.fixing_issues = False
-        self.mic_active = False
-        self.mic_on_at = 0
-        self.stop_event = threading.Event()
-        self.log_frequency = 50
-        self.log_counter = 0
-
-        # API clients
-        self.client = OpenAI() if OpenAI else None
-        self.ws = None
-        self.aider_process = None
-        self.temp_files = []
-
-        # Async components
-        self.loop = None
-        self.thread = None
-
-    def _init_managers(self):
-        """Initialize manager components"""
-        self.clipboard_manager = ClipboardManager(self)
-        self.result_processor = ResultProcessor(self)
-        self.error_processor = ErrorProcessor(self)
-        self.ws_manager = WebSocketManager(self)
-        self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
-        self.keyboard_shortcuts = KeyboardShortcuts(self)
-
-    def _init_async(self):
-        """Initialize async components"""
-        self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
-        self.thread.start()
