@@ -1,13 +1,14 @@
 import unittest
 import asyncio
 import tkinter as tk
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 import sys
 import json
 import time
 from queue import Queue
 import websockets
 import pyaudio
+import pyperclip
 from contextlib import contextmanager
 from aider_wrapper import (
     AiderVoiceGUI,
@@ -20,82 +21,53 @@ from aider_wrapper import (
     ConnectionState,
 )
 
-class AsyncTestCase(unittest.TestCase):
-    """Base class for async tests with enhanced async support"""
+# Test Utilities and Fixtures
+def create_mock_args():
+    """Create standardized mock arguments for testing"""
+    args = MagicMock()
+    args.voice_only = False
+    args.instructions = None
+    args.clipboard = False
+    args.chat_mode = "code"
+    args.suggest_shell_commands = False
+    args.model = "gpt-4"
+    args.gui = True
+    args.auto = False
+    args.api_key = "test_key"
+    args.verbose = False
+    args.temperature = 0.7
+    args.max_tokens = 2000
+    args.files = []
+    return args
 
-    def setUp(self):
-        """Set up test environment with proper async context"""
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.addCleanup(self.cleanup_loop)
+def create_gui_app():
+    """Create a GUI application instance with mocked arguments"""
+    mock_args = create_mock_args()
+    with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
+        root = tk.Tk()
+        app = AiderVoiceGUI(root)
+        app.setup_gui()
+        return app, root
 
-    def cleanup_loop(self):
-        """Clean up the event loop"""
-        self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-        self.loop.close()
-        asyncio.set_event_loop(None)
+def create_buffer_manager():
+    """Create an AudioBufferManager instance for testing"""
+    return AudioBufferManager(
+        max_size=1024,
+        chunk_size=256,
+        sample_rate=24000
+    )
 
-    async def asyncSetUp(self):
-        """Optional async setup - override in subclasses"""
-        pass
+def create_performance_monitor():
+    """Create a PerformanceMonitor instance for testing"""
+    metrics = ["cpu", "memory", "latency"]
+    return PerformanceMonitor(metrics)
 
-    async def asyncTearDown(self):
-        """Optional async teardown - override in subclasses"""
-        pass
-
-    def run_async_test(self, coro):
-        """Run coroutine in the test loop with enhanced error handling and timeout"""
-        async def _run_with_setup():
-            await self.asyncSetUp()
-            try:
-                result = await asyncio.wait_for(coro, timeout=5.0)
-                return result
-            except asyncio.TimeoutError:
-                self.fail("Async test timed out after 5 seconds")
-            finally:
-                await self.asyncTearDown()
-
-        try:
-            return self.loop.run_until_complete(_run_with_setup())
-        except Exception as e:
-            self.fail(f"Async test failed with error: {type(e).__name__}: {str(e)}\n{e.__traceback__}")
-
-    @contextmanager
-    def assertNotRaises(self, exc_type):
-        """Context manager to assert no exception is raised"""
-        try:
-            yield
-        except exc_type as e:
-            self.fail(f"Expected no {exc_type.__name__} but got: {e}")
-
-    async def wait_for_condition(self, condition_func, timeout=5.0, interval=0.1):
-        """Wait for a condition to become true with timeout"""
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if condition_func():
-                return True
-            await asyncio.sleep(interval)
-        return False
-
-import unittest
-import asyncio
-import tkinter as tk
-from unittest.mock import MagicMock, patch
-import sys
-import json
-import time
-from queue import Queue
-import websockets
-import pyaudio
-from aider_wrapper import (
-    AiderVoiceGUI,
-    AudioBufferManager,
-    AudioProcessingError,
-    PerformanceMonitor,
-    WebSocketManager,
-    VoiceCommandProcessor,
-    ClipboardManager,
-)
+async def run_async_test(coro):
+    """Helper function to run async tests"""
+    try:
+        return await coro
+    finally:
+        await asyncio.sleep(0)  # Allow other tasks to run
 
 class AsyncMock(MagicMock):
     """Mock class that supports async methods and special method handling"""
@@ -272,15 +244,6 @@ def create_gui_app(cls):
             loop.close()
             asyncio.set_event_loop(None)
 
-@classmethod
-def create_buffer_manager(cls):
-    """Fixture for AudioBufferManager instance"""
-    return AudioBufferManager(
-        max_size=1024,
-        chunk_size=256,
-        sample_rate=24000
-    )
-
 class TestAudioBufferManager(unittest.TestCase):
     """Test suite for audio buffer management functionality"""
     
@@ -351,12 +314,6 @@ class TestAudioBufferManager(unittest.TestCase):
         with self.assertRaises(AudioProcessingError):
             self.buffer_manager.combine_chunks(test_chunks)
         self.assertEqual(self.buffer_manager.stats["drops"], 1)
-
-@classmethod
-def create_performance_monitor(cls):
-    """Fixture for PerformanceMonitor instance"""
-    metrics = ["cpu", "memory", "latency"]
-    return PerformanceMonitor(metrics)
 
 class TestPerformanceMonitor(unittest.TestCase):
     """Test suite for performance monitoring functionality"""
@@ -954,13 +911,6 @@ class TestClipboardManager(unittest.TestCase):
             mock_paste.return_value = input_content
             result = self.manager.get_current_content()
             self.assertEqual(result, expected, f"Failed for input: {input_content}")
-
-async def run_async_test(coro):
-    """Helper function to run async tests"""
-    try:
-        return await coro
-    finally:
-        await asyncio.sleep(0)  # Allow other tasks to run
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
