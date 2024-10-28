@@ -406,13 +406,22 @@ class AiderVoiceGUI:
         # Parse command line arguments first
         self.args = self.parse_arguments()
 
+        # Initialize interface state
+        self.interface_state = {
+            "files": {},  # Store file contents
+            "issues": [],  # Store detected issues
+            "aider_output": [],  # Store Aider responses
+            "clipboard_history": [],  # Track clipboard content
+            "last_analysis": None,  # Store last analysis results
+            "command_history": [],  # Track command history
+        }
+
         # Initialize all instance attributes to None/empty
         self._init_attributes()
 
         # Initialize components in dependency order
         self._init_queues()
         self._init_audio()
-        self._init_state()
         self._init_managers()
         self._init_async()
 
@@ -478,61 +487,6 @@ class AiderVoiceGUI:
             except (websockets.exceptions.WebSocketException, json.JSONDecodeError) as e:
                 self.log_message(f"Error sending audio chunk: {e}")
 
-        # Performance monitoring
-        self.log_frequency = 50
-        self.log_counter = 0
-        self.chunk_buffer = []
-        self.chunk_buffer_size = 5
-        self.audio_thread = None
-
-        # Interface state tracking
-        self.interface_state = {
-            "files": {},
-            "issues": [],
-            "aider_output": [],
-            "clipboard_history": [],
-            "last_analysis": None,
-            "command_history": [],
-        }
-
-        # Parse command line arguments
-        self.args = self.parse_arguments()
-
-
-        # Initialize all attributes
-        self.response_active = False
-        self.last_transcript_id = None
-        self.last_audio_time = time.time()
-        self.recording = False
-        self.auto_mode = False
-        self.audio_queue = Queue()
-        self.ws = None
-        self.running = True
-        self.client = OpenAI()
-        self.aider_process = None
-        self.temp_files = []
-        self.fixing_issues = False
-        self.mic_active = False
-        self.mic_on_at = 0
-        self.stop_event = threading.Event()
-        self.log_frequency = 50
-        self.log_counter = 0
-        self.chunk_buffer = []
-        self.chunk_buffer_size = 5
-        self.audio_thread = None
-
-        # Track interface state and content
-        self.interface_state = {
-            "files": {},  # Store file contents
-            "issues": [],  # Store detected issues
-            "aider_output": [],  # Store Aider responses
-            "clipboard_history": [],  # Track clipboard content
-            "last_analysis": None,  # Store last analysis results
-            "command_history": [],  # Track command history
-        }
-
-        # Setup GUI components
-        self.setup_gui()
 
     def setup_gui(self):
         """Setup GUI components and layout"""
@@ -1832,15 +1786,6 @@ if __name__ == "__main__":
         self.log_frame = None
         self.output_text = None
 
-        # Audio components
-        self.audio_buffer = bytearray()
-        self.mic_stream = None
-        self.spkr_stream = None
-        self.p = None
-        self.chunk_buffer = []
-        self.chunk_buffer_size = 5
-        self.audio_thread = None
-
         # State tracking
         self.response_active = False
         self.last_transcript_id = None
@@ -1851,8 +1796,6 @@ if __name__ == "__main__":
         self.fixing_issues = False
         self.mic_active = False
         self.mic_on_at = 0
-
-        # Event handling
         self.stop_event = threading.Event()
         self.log_frequency = 50
         self.log_counter = 0
@@ -1862,14 +1805,6 @@ if __name__ == "__main__":
         self.ws = None
         self.aider_process = None
         self.temp_files = []
-
-        # Managers
-        self.clipboard_manager = None
-        self.result_processor = None
-        self.error_processor = None
-        self.ws_manager = None
-        self.performance_monitor = None
-        self.keyboard_shortcuts = None
 
         # Async components
         self.loop = None
