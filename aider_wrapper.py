@@ -59,12 +59,8 @@ from tkinter import filedialog, scrolledtext, ttk
 # Third-party imports
 import pyaudio
 from websockets.exceptions import (
-    WebSocketException, 
-    ConnectionClosed, 
-    InvalidStatusCode,
-    InvalidHandshake,
-    ConnectionClosedError,
-    ConnectionClosedOK
+    WebSocketException,
+    InvalidStatusCode
 )
 
 # Optional third-party imports with fallbacks
