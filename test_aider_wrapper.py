@@ -198,6 +198,19 @@ class TestArgumentParser(unittest.TestCase):
             args = AiderVoiceGUI.parse_arguments()
             self.assertEqual(args.files, ['file1.py', 'file2.py'])
 
+    def test_parse_arguments_api_key(self):
+        """Test --api-key argument"""
+        test_key = "sk-1234567890abcdef"
+        with patch('sys.argv', ['aider_wrapper.py', '--api-key', test_key]):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertEqual(args.api_key, test_key)
+            
+        # Test environment variable
+        with patch('os.environ', {'OPENAI_API_KEY': test_key}):
+            with patch('sys.argv', ['aider_wrapper.py']):
+                args = AiderVoiceGUI.parse_arguments()
+                self.assertEqual(args.api_key, test_key)
+
 def create_buffer_manager():
     """Create an AudioBufferManager instance for testing"""
     return AudioBufferManager(
