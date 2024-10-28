@@ -1,6 +1,8 @@
 # Standard library imports
 import argparse
 import asyncio
+import unittest
+from unittest.mock import patch
 import base64
 import json
 import os
@@ -1115,6 +1117,54 @@ class AiderVoiceGUI:
             self.log_message(f"❌ Command validation error: {e}")
             self.interface_state['command_history'][-1]['status'] = 'failed'
             self.interface_state['command_history'][-1]['error'] = str(e)
+
+
+class TestGUIEventHandlers(unittest.TestCase):
+    """Test GUI event handlers and keyboard shortcuts"""
+
+    def setUp(self):
+        """Set up test environment"""
+        self.root = tk.Tk()
+        self.app = AiderVoiceGUI(self.root)
+
+    def tearDown(self):
+        """Clean up test environment"""
+        self.root.destroy()
+
+    def test_keyboard_shortcuts(self):
+        """Test keyboard shortcut bindings and handlers"""
+        # Create mock event
+        event = type('Event', (), {'widget': None})()
+        
+        # Test Control-r shortcut (check issues)
+        with patch.object(self.app, 'check_all_issues') as mock_check:
+            self.app.root.event_generate('<Control-r>')
+            self.root.update()
+            mock_check.assert_called_once()
+
+        # Test Control-a shortcut (browse files)
+        with patch.object(self.app, 'browse_files') as mock_browse:
+            self.app.root.event_generate('<Control-a>')
+            self.root.update()
+            mock_browse.assert_called_once()
+
+        # Test Control-v shortcut (use clipboard)
+        with patch.object(self.app, 'use_clipboard_content') as mock_clipboard:
+            self.app.root.event_generate('<Control-v>')
+            self.root.update()
+            mock_clipboard.assert_called_once()
+
+        # Test Control-s shortcut (send text)
+        with patch.object(self.app, 'send_input_text') as mock_send:
+            self.app.root.event_generate('<Control-s>')
+            self.root.update()
+            mock_send.assert_called_once()
+
+        # Test Escape shortcut (stop voice)
+        with patch.object(self.app, 'stop_voice_control') as mock_stop:
+            self.app.root.event_generate('<Escape>')
+            self.root.update()
+            mock_stop.assert_called_once()
 
 
 class ClipboardManager:
