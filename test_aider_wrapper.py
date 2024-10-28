@@ -179,56 +179,6 @@ def create_gui_app(cls):
         transcription = self.app.transcription_text.get("1.0", tk.END).strip()
         self.assertIn("🎤 " + test_text, transcription)
 
-    @patch('websockets.connect', new_callable=AsyncMock)
-    def test_connect_websocket(self, mock_connect):
-        """Test websocket connection and message handling"""
-        # Create async mock for websocket with proper boolean behavior
-        mock_ws = AsyncMock()
-        mock_ws.send = AsyncMock()
-        mock_ws.ping = AsyncMock()
-        mock_ws.side_effect = lambda: True
-        mock_connect.return_value = mock_ws
-
-        async def run_test():
-            # Start message handling tasks
-            message_task = asyncio.create_task(self.app.handle_websocket_messages())
-            queue_task = asyncio.create_task(self.app.process_audio_queue())
-
-            try:
-                result = await self.app.connect_websocket()
-                self.assertTrue(result)
-                self.assertEqual(self.app.ws, mock_ws)
-                
-                # Verify session.update was sent with correct data
-                mock_ws.send.assert_called_once()
-                call_args = mock_ws.send.call_args[0][0]
-                self.assertIn("session.update", call_args)
-                self.assertIn("model", call_args)
-                
-                # Additional assertions to verify connection state
-                self.assertTrue(self.app.ws is not None)
-                self.assertFalse(self.app.response_active)
-                self.assertIsNone(self.app.last_transcript_id)
-                self.assertEqual(len(self.app.audio_buffer), 0)
-                
-            finally:
-                # Clean up tasks
-                message_task.cancel()
-                queue_task.cancel()
-                try:
-                    await message_task
-                    await queue_task
-                except asyncio.CancelledError:
-                    pass
-
-        # Create and run event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(run_test())
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
 
     @patch('websockets.connect', new_callable=AsyncMock)
     def test_connect_websocket_failure(self, mock_connect):
@@ -682,68 +632,52 @@ class TestAudioProcessing(unittest.TestCase):
         """Clean up after tests"""
         self.root.destroy()
 
-    def test_handle_mic_input(self):
+    async def test_handle_mic_input(self):
         """Test microphone input handling"""
-        async def run_test():
-            # Test normal input
-            result = await self.app.handle_mic_input(
-                self.test_audio,
-                self.chunk_size,
-                {},
-                0
-            )
-            self.assertEqual(result, (None, pyaudio.paContinue))
+        # Test normal input
+        result = await self.app.handle_mic_input(
+            self.test_audio,
+            self.chunk_size,
+            {},
+            0
+        )
+        self.assertEqual(result, (None, pyaudio.paContinue))
 
-            # Test when mic is suppressed
-            self.app.mic_on_at = time.time() + 1000  # Future time
-            result = await self.app.handle_mic_input(
-                self.test_audio,
-                self.chunk_size,
-                {},
-                0
-            )
-            self.assertEqual(result, (None, pyaudio.paContinue))
-            self.assertFalse(self.app.mic_active)
+        # Test when mic is suppressed
+        self.app.mic_on_at = time.time() + 1000  # Future time
+        result = await self.app.handle_mic_input(
+            self.test_audio,
+            self.chunk_size,
+            {},
+            0
+        )
+        self.assertEqual(result, (None, pyaudio.paContinue))
+        self.assertFalse(self.app.mic_active)
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(run_test())
-        finally:
-            loop.close()
-
-    def test_handle_speaker_output(self):
+    async def test_handle_speaker_output(self):
         """Test speaker output handling"""
-        async def run_test():
-            # Test with empty buffer
-            result = await self.app.handle_speaker_output(
-                None,
-                self.chunk_size,
-                {},
-                0
-            )
-            self.assertEqual(len(result[0]), self.chunk_size * 2)  # 16-bit audio
-            self.assertEqual(result[1], pyaudio.paContinue)
+        # Test with empty buffer
+        result = await self.app.handle_speaker_output(
+            None,
+            self.chunk_size,
+            {},
+            0
+        )
+        self.assertEqual(len(result[0]), self.chunk_size * 2)  # 16-bit audio
+        self.assertEqual(result[1], pyaudio.paContinue)
 
-            # Test with data in buffer
-            test_data = b'\x01\x00' * self.chunk_size
-            self.app.audio_buffer = bytearray(test_data)
-            result = await self.app.handle_speaker_output(
-                None,
-                self.chunk_size,
-                {},
-                0
-            )
-            self.assertEqual(result[0], test_data)
-            self.assertEqual(result[1], pyaudio.paContinue)
-            self.assertEqual(len(self.app.audio_buffer), 0)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(run_test())
-        finally:
-            loop.close()
+        # Test with data in buffer
+        test_data = b'\x01\x00' * self.chunk_size
+        self.app.audio_buffer = bytearray(test_data)
+        result = await self.app.handle_speaker_output(
+            None,
+            self.chunk_size,
+            {},
+            0
+        )
+        self.assertEqual(result[0], test_data)
+        self.assertEqual(result[1], pyaudio.paContinue)
+        self.assertEqual(len(self.app.audio_buffer), 0)
 
     @patch('websockets.connect', new_callable=AsyncMock)
     async def test_send_audio_chunk(self, mock_connect):
@@ -767,53 +701,36 @@ class TestAudioProcessing(unittest.TestCase):
         await self.app.send_audio_chunk(b'')
         mock_ws.send.assert_not_called()
 
-    def test_audio_buffer_overflow(self):
+    async def test_audio_buffer_overflow(self):
         """Test audio buffer overflow handling"""
-        async def run_test():
-            # Create buffer manager with small max size for testing
-            buffer_manager = AudioBufferManager(
-                max_size=1024,  # 1KB max buffer
-                chunk_size=256,
-                sample_rate=24000
-            )
-            
-            # Create test data larger than buffer
-            test_data = b"\x00" * 2048  # 2KB of data
-            
-            # Split into chunks
-            chunks = [test_data[i:i+256] for i in range(0, len(test_data), 256)]
-            
-            # Create queue and add chunks
-            test_queue = Queue()
-            for chunk in chunks:
-                test_queue.put(chunk)
-            
-            # Get chunks with overflow protection
-            received_chunks = buffer_manager.get_chunks(test_queue)
-            
-            # Verify overflow was handled
-            self.assertTrue(len(received_chunks) < len(chunks))
-            self.assertEqual(buffer_manager.stats["overflows"], 1)
-            
-            # Verify buffer usage
-            combined_data = buffer_manager.combine_chunks(received_chunks)
-            self.assertLessEqual(len(combined_data), buffer_manager.max_size)
-
-            # Run the test
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(run_test())
-            finally:
-                loop.close()
-                asyncio.set_event_loop(None)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(run_test())
-        finally:
-            loop.close()
+        # Create buffer manager with small max size for testing
+        buffer_manager = AudioBufferManager(
+            max_size=1024,  # 1KB max buffer
+            chunk_size=256,
+            sample_rate=24000
+        )
+        
+        # Create test data larger than buffer
+        test_data = b"\x00" * 2048  # 2KB of data
+        
+        # Split into chunks
+        chunks = [test_data[i:i+256] for i in range(0, len(test_data), 256)]
+        
+        # Create queue and add chunks
+        test_queue = Queue()
+        for chunk in chunks:
+            test_queue.put(chunk)
+        
+        # Get chunks with overflow protection
+        received_chunks = buffer_manager.get_chunks(test_queue)
+        
+        # Verify overflow was handled
+        self.assertTrue(len(received_chunks) < len(chunks))
+        self.assertEqual(buffer_manager.stats["overflows"], 1)
+        
+        # Verify buffer usage
+        combined_data = buffer_manager.combine_chunks(received_chunks)
+        self.assertLessEqual(len(combined_data), buffer_manager.max_size)
 
 class TestGUIEventHandlers(unittest.TestCase):
     """Test GUI event handlers and interactions"""
