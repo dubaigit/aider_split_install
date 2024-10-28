@@ -106,6 +106,47 @@ def create_gui_app():
         app.setup_gui()
         return app, root
 
+class TestArgumentParser(unittest.TestCase):
+    """Test argument parsing functionality"""
+
+    def test_parse_arguments(self):
+        """Test argument parsing with various configurations"""
+        test_cases = [
+            ([], {
+                'voice_only': False,
+                'instructions': None,
+                'clipboard': False,
+                'chat_mode': 'code',
+                'suggest_shell_commands': False,
+                'model': 'gpt-4',
+                'gui': True,
+                'auto': False,
+                'verbose': False,
+                'temperature': 0.7,
+                'max_tokens': 2000,
+                'files': []
+            }),
+            (['--voice-only'], {'voice_only': True}),
+            (['--instructions', 'test.txt'], {'instructions': 'test.txt'}),
+            (['--clipboard'], {'clipboard': True}),
+            (['--chat-mode', 'chat'], {'chat_mode': 'chat'}),
+            (['--suggest-shell-commands'], {'suggest_shell_commands': True}),
+            (['--model', 'gpt-3.5'], {'model': 'gpt-3.5'}),
+            (['--no-gui'], {'gui': False}),
+            (['--auto'], {'auto': True}),
+            (['--verbose'], {'verbose': True}),
+            (['--temperature', '0.5'], {'temperature': 0.5}),
+            (['--max-tokens', '1000'], {'max_tokens': 1000}),
+            (['file1.py', 'file2.py'], {'files': ['file1.py', 'file2.py']}),
+        ]
+
+        for args, expected in test_cases:
+            with self.subTest(args=args):
+                with patch('sys.argv', ['aider_wrapper.py'] + args):
+                    parsed_args = AiderVoiceGUI.parse_arguments()
+                    for key, value in expected.items():
+                        self.assertEqual(getattr(parsed_args, key), value)
+
 def create_buffer_manager():
     """Create an AudioBufferManager instance for testing"""
     return AudioBufferManager(
@@ -154,34 +195,6 @@ class AsyncMock(MagicMock):
         raise StopAsyncIteration
 
 # Test fixtures and utilities
-@staticmethod
-def create_mock_args():
-    """Create standardized mock arguments for testing"""
-    args = MagicMock()
-    args.voice_only = False
-    args.instructions = None
-    args.clipboard = False
-    args.chat_mode = "code"
-    args.suggest_shell_commands = False
-    args.model = "gpt-4"
-    args.gui = True
-    args.auto = False
-    args.api_key = "test_key"
-    args.verbose = False
-    args.temperature = 0.7
-    args.max_tokens = 2000
-    args.files = []
-    return args
-
-@classmethod
-def create_gui_app(cls):
-    """Create a GUI application instance with mocked arguments"""
-    mock_args = cls.create_mock_args()
-    with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
-        root = tk.Tk()
-        app = AiderVoiceGUI(root)
-        app.setup_gui()
-        return app, root
 
 
     def test_init(self):
