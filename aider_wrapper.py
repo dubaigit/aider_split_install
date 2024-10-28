@@ -1385,12 +1385,22 @@ class ClipboardManager:
         return content.strip()
 
 
+from enum import Enum, auto
+
+class ConnectionState(Enum):
+    """Enum for WebSocket connection states"""
+    DISCONNECTED = auto()
+    CONNECTING = auto() 
+    CONNECTED = auto()
+    RECONNECTING = auto()
+    FAILED = auto()
+
 class WebSocketManager:
     """Manages WebSocket connection state and monitoring"""
 
     def __init__(self, parent):
         self.parent = parent
-        self.connection_state = "disconnected"
+        self._state = ConnectionState.DISCONNECTED
         self.last_ping_time = 0
         self.ping_interval = 30  # seconds
         self.reconnect_attempts = 0
@@ -1398,6 +1408,33 @@ class WebSocketManager:
         self.monitoring_task = None
         self.log_message = parent.log_message
         self.ws = parent.ws
+        self._state_transitions = {
+            ConnectionState.DISCONNECTED: [ConnectionState.CONNECTING],
+            ConnectionState.CONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED],
+            ConnectionState.CONNECTED: [ConnectionState.DISCONNECTED],
+            ConnectionState.RECONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED],
+            ConnectionState.FAILED: [ConnectionState.CONNECTING]
+        }
+
+    @property 
+    def connection_state(self):
+        """Get current connection state"""
+        return self._state
+
+    @connection_state.setter
+    def connection_state(self, new_state):
+        """Set connection state with validation"""
+        if not isinstance(new_state, ConnectionState):
+            raise ValueError(f"Invalid state type: {type(new_state)}")
+            
+        if new_state not in self._state_transitions[self._state]:
+            raise ValueError(
+                f"Invalid state transition from {self._state} to {new_state}"
+            )
+            
+        old_state = self._state
+        self._state = new_state
+        self.log_message(f"WebSocket state changed: {old_state.name} -> {new_state.name}")
 
     async def start_monitoring(self):
         """Start connection monitoring"""
@@ -1407,19 +1444,31 @@ class WebSocketManager:
         """Monitor connection health and handle reconnection"""
         while True:
             try:
-                if self.connection_state == "connected":
+                if self.connection_state == ConnectionState.CONNECTED:
                     if time.time() - self.last_ping_time > self.ping_interval:
                         await self.check_connection()
-                elif self.connection_state == "disconnected":
+                elif self.connection_state == ConnectionState.DISCONNECTED:
+                    self.connection_state = ConnectionState.CONNECTING
                     await self.attempt_reconnect()
+                elif self.connection_state == ConnectionState.FAILED:
+                    if self.reconnect_attempts < self.max_reconnect_attempts:
+                        self.connection_state = ConnectionState.CONNECTING
+                        await self.attempt_reconnect()
+                    else:
+                        self.log_message("Max reconnection attempts reached")
+                        break
 
                 await asyncio.sleep(1)
             except websockets.exceptions.WebSocketException as e:
-                self.parent.log_message(f"WebSocket monitoring error: {e}")
+                self.log_message(f"WebSocket monitoring error: {e}")
+                self.connection_state = ConnectionState.DISCONNECTED
             except ConnectionError as e:
-                self.parent.log_message(f"Connection monitoring error: {e}")
+                self.log_message(f"Connection monitoring error: {e}")
+                self.connection_state = ConnectionState.DISCONNECTED
             except asyncio.CancelledError:
                 break
+            except ValueError as e:
+                self.log_message(f"State transition error: {e}")
 
     async def check_connection(self):
         """Check connection health with ping"""
@@ -1430,35 +1479,51 @@ class WebSocketManager:
                 return True
             return False
         except websockets.exceptions.WebSocketException as e:
-            self.connection_state = "disconnected"
-            self.parent.log_message(f"⚠️ WebSocket connection lost due to WebSocket error: {e}")
+            self.log_message(f"⚠️ WebSocket connection lost due to WebSocket error: {e}")
+            self.connection_state = ConnectionState.DISCONNECTED
             return False
         except ConnectionError as e:
-            self.connection_state = "disconnected"
-            self.parent.log_message(f"⚠️ WebSocket connection lost due to connection error: {e}")
-            await self.attempt_reconnect()
+            self.log_message(f"⚠️ WebSocket connection lost due to connection error: {e}")
+            self.connection_state = ConnectionState.DISCONNECTED
+            return False
+        except Exception as e:
+            self.log_message(f"⚠️ Unexpected error during connection check: {e}")
+            self.connection_state = ConnectionState.FAILED
             return False
 
     async def attempt_reconnect(self):
         """Attempt to reconnect with exponential backoff"""
         if self.reconnect_attempts >= self.max_reconnect_attempts:
-            self.parent.log_message("❌ Max reconnection attempts reached")
-            return
+            self.connection_state = ConnectionState.FAILED
+            self.log_message("❌ Max reconnection attempts reached")
+            return False
 
         delay = min(30, 2**self.reconnect_attempts)
-        self.parent.log_message(f"Attempting reconnection in {delay} seconds...")
+        self.log_message(f"Attempting reconnection in {delay} seconds...")
         await asyncio.sleep(delay)
 
         try:
-            await self.parent.connect_websocket()
-            self.connection_state = "connected"
-            self.reconnect_attempts = 0
-            self.parent.log_message("✅ Successfully reconnected")
+            self.connection_state = ConnectionState.RECONNECTING
+            if await self.parent.connect_websocket():
+                self.connection_state = ConnectionState.CONNECTED
+                self.reconnect_attempts = 0
+                self.log_message("✅ Successfully reconnected")
+                return True
+            else:
+                self.connection_state = ConnectionState.FAILED
+                return False
         except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
             self.reconnect_attempts += 1
-            self.parent.log_message(f"Reconnection attempt failed: {e}")
+            self.log_message(f"Reconnection attempt failed: {e}")
+            self.connection_state = ConnectionState.FAILED
+            return False
         except asyncio.CancelledError:
-            return
+            self.connection_state = ConnectionState.DISCONNECTED
+            return False
+        except Exception as e:
+            self.log_message(f"Unexpected error during reconnection: {e}")
+            self.connection_state = ConnectionState.FAILED
+            return False
 
 
 def main():
