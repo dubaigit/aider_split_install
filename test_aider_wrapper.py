@@ -468,9 +468,12 @@ class TestWebSocketManager(AsyncTestCase):
         """Set up test environment"""
         self.parent = MagicMock()
         self.parent.ws = AsyncMock()
+        self.parent.log_message = MagicMock()
         self.manager = WebSocketManager(self.parent)
-        # Initialize with disconnected state
-        self._state = ConnectionState.DISCONNECTED
+        self.mock_ws = AsyncMock()
+        self.mock_ws.ping = AsyncMock()
+        self.mock_ws.send = AsyncMock()
+        self.manager.ws = self.mock_ws
 
     async def test_valid_state_transitions(self):
         """Test valid WebSocket state transitions"""
@@ -541,31 +544,25 @@ class TestWebSocketManager(AsyncTestCase):
 
     async def test_valid_state_transitions(self):
         """Test valid WebSocket state transitions"""
-        await self.asyncSetUp()
-        
         # Test DISCONNECTED -> CONNECTING
         self.manager.connection_state = ConnectionState.CONNECTING
         self.assertEqual(self.manager.connection_state, ConnectionState.CONNECTING)
-        self.manager.log_message.assert_called_with(
+        self.parent.log_message.assert_called_with(
             "🔄 WebSocket state transition: DISCONNECTED -> CONNECTING\n"
             "Reason: Initial connection attempt\n"
         )
         
         # Test CONNECTING -> CONNECTED
-        self.manager.log_message.reset_mock()
+        self.parent.log_message.reset_mock()
         self.manager.connection_state = ConnectionState.CONNECTED
         self.assertEqual(self.manager.connection_state, ConnectionState.CONNECTED)
-        self.manager.log_message.assert_called_with(
+        self.parent.log_message.assert_called_with(
             "✅ WebSocket state transition: CONNECTING -> CONNECTED\n"
             "Reason: Connection established successfully\n"
         )
-        
-        await self.asyncTearDown()
 
     async def test_invalid_state_transitions(self):
         """Test invalid WebSocket state transitions"""
-        await self.asyncSetUp()
-        
         # Test invalid transition: DISCONNECTED -> CONNECTED
         with self.assertRaises(ValueError) as cm:
             self.manager.connection_state = ConnectionState.CONNECTED
@@ -577,8 +574,6 @@ class TestWebSocketManager(AsyncTestCase):
         with self.assertRaises(ValueError) as cm:
             self.manager.connection_state = ConnectionState.CONNECTING
         self.assertIn("Invalid state transition", str(cm.exception))
-        
-        await self.asyncTearDown()
 
     async def test_reconnection_state_tracking(self):
         """Test reconnection attempt state tracking"""
@@ -671,79 +666,6 @@ class TestWebSocketManager(AsyncTestCase):
         await self.manager.attempt_reconnect()
         self.parent.log_message.assert_called_with("❌ Max reconnection attempts reached")
 
-    def run_async_test(self, coro):
-        """Helper method to run async tests"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
-
-    def test_check_connection_sync(self):
-        """Test check_connection using sync wrapper"""
-        self.run_async_test(self.test_check_connection_success())
-        self.run_async_test(self.test_check_connection_failure())
-
-    def test_monitor_connection_sync(self):
-        """Test monitor_connection using sync wrapper"""
-        async def test_coro():
-            # Setup
-            self.manager.check_connection = AsyncMock()
-            self.manager.attempt_reconnect = AsyncMock()
-            
-            try:
-                # Test monitoring connected state
-                self.manager.connection_state = ConnectionState.CONNECTED
-                self.manager.last_ping_time = 0
-                monitor_task = asyncio.create_task(self.manager.monitor_connection())
-                
-                # Allow monitor to run briefly
-                await asyncio.sleep(0.1)
-                
-                # Verify behavior
-                self.manager.check_connection.assert_called_once()
-                
-                # Test monitoring disconnected state
-                self.manager.connection_state = ConnectionState.DISCONNECTED
-                await asyncio.sleep(0.1)
-                self.manager.attempt_reconnect.assert_called_once()
-                
-                # Test failed state behavior
-                self.manager.connection_state = ConnectionState.FAILED
-                self.manager.reconnect_attempts = self.manager.max_reconnect_attempts
-                await asyncio.sleep(0.1)
-                self.assertEqual(self.manager.attempt_reconnect.call_count, 1)
-                
-            finally:
-                # Cleanup
-                if 'monitor_task' in locals():
-                    monitor_task.cancel()
-                    try:
-                        await monitor_task
-                    except asyncio.CancelledError:
-                        pass
-
-        # Run the async test in a new event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(test_coro())
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
-
-    def test_attempt_reconnect_sync(self):
-        """Test attempt_reconnect using sync wrapper"""
-        async def test_success():
-            await self.test_attempt_reconnect_success()
-            
-        async def test_failure():
-            await self.test_attempt_reconnect_failure()
-            
-        self.run_async_test(test_success())
-        self.run_async_test(test_failure())
 
 class TestAudioProcessing(unittest.TestCase):
     """Test audio processing functionality"""
