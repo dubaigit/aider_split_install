@@ -111,6 +111,7 @@ class TestArgumentParser(unittest.TestCase):
             self.assertEqual(args.model, 'gpt-4')
             self.assertTrue(args.gui)
             self.assertFalse(args.auto)
+            self.assertIsNone(args.api_key)  # API key should be None by default
             self.assertFalse(args.verbose)
             self.assertEqual(args.temperature, 0.7)
             self.assertEqual(args.max_tokens, 2000)
@@ -148,9 +149,18 @@ class TestArgumentParser(unittest.TestCase):
 
     def test_parse_arguments_model(self):
         """Test --model argument"""
-        with patch('sys.argv', ['aider_wrapper.py', '--model', 'gpt-3.5']):
-            args = AiderVoiceGUI.parse_arguments()
-            self.assertEqual(args.model, 'gpt-3.5')
+        test_cases = [
+            ('gpt-3.5', 'gpt-3.5'),
+            ('gpt-4', 'gpt-4'),
+            ('gpt-4-turbo', 'gpt-4-turbo'),
+            ('gpt-3.5-turbo', 'gpt-3.5-turbo')
+        ]
+        
+        for model_input, expected in test_cases:
+            with self.subTest(model=model_input):
+                with patch('sys.argv', ['aider_wrapper.py', '--model', model_input]):
+                    args = AiderVoiceGUI.parse_arguments()
+                    self.assertEqual(args.model, expected)
 
     def test_parse_arguments_no_gui(self):
         """Test --no-gui argument"""
