@@ -99,43 +99,94 @@ def create_gui_app():
 class TestArgumentParser(unittest.TestCase):
     """Test argument parsing functionality"""
 
-    def test_parse_arguments(self):
-        """Test argument parsing with various configurations"""
-        test_cases = [
-            ([], {
-                'voice_only': False,
-                'instructions': None,
-                'clipboard': False,
-                'chat_mode': 'code',
-                'suggest_shell_commands': False,
-                'model': 'gpt-4',
-                'gui': True,
-                'auto': False,
-                'verbose': False,
-                'temperature': 0.7,
-                'max_tokens': 2000,
-                'files': []
-            }),
-            (['--voice-only'], {'voice_only': True}),
-            (['--instructions', 'test.txt'], {'instructions': 'test.txt'}),
-            (['--clipboard'], {'clipboard': True}),
-            (['--chat-mode', 'chat'], {'chat_mode': 'chat'}),
-            (['--suggest-shell-commands'], {'suggest_shell_commands': True}),
-            (['--model', 'gpt-3.5'], {'model': 'gpt-3.5'}),
-            (['--no-gui'], {'gui': False}),
-            (['--auto'], {'auto': True}),
-            (['--verbose'], {'verbose': True}),
-            (['--temperature', '0.5'], {'temperature': 0.5}),
-            (['--max-tokens', '1000'], {'max_tokens': 1000}),
-            (['file1.py', 'file2.py'], {'files': ['file1.py', 'file2.py']}),
-        ]
+    def test_parse_arguments_defaults(self):
+        """Test argument parsing with default values"""
+        with patch('sys.argv', ['aider_wrapper.py']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertFalse(args.voice_only)
+            self.assertIsNone(args.instructions)
+            self.assertFalse(args.clipboard)
+            self.assertEqual(args.chat_mode, 'code')
+            self.assertFalse(args.suggest_shell_commands)
+            self.assertEqual(args.model, 'gpt-4')
+            self.assertTrue(args.gui)
+            self.assertFalse(args.auto)
+            self.assertFalse(args.verbose)
+            self.assertEqual(args.temperature, 0.7)
+            self.assertEqual(args.max_tokens, 2000)
+            self.assertEqual(args.files, [])
 
-        for args, expected in test_cases:
-            with self.subTest(args=args):
-                with patch('sys.argv', ['aider_wrapper.py'] + args):
-                    parsed_args = AiderVoiceGUI.parse_arguments()
-                    for key, value in expected.items():
-                        self.assertEqual(getattr(parsed_args, key), value)
+    def test_parse_arguments_voice_only(self):
+        """Test --voice-only argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--voice-only']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertTrue(args.voice_only)
+
+    def test_parse_arguments_instructions(self):
+        """Test --instructions argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--instructions', 'test.txt']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertEqual(args.instructions, 'test.txt')
+
+    def test_parse_arguments_clipboard(self):
+        """Test --clipboard argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--clipboard']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertTrue(args.clipboard)
+
+    def test_parse_arguments_chat_mode(self):
+        """Test --chat-mode argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--chat-mode', 'chat']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertEqual(args.chat_mode, 'chat')
+
+    def test_parse_arguments_suggest_shell_commands(self):
+        """Test --suggest-shell-commands argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--suggest-shell-commands']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertTrue(args.suggest_shell_commands)
+
+    def test_parse_arguments_model(self):
+        """Test --model argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--model', 'gpt-3.5']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertEqual(args.model, 'gpt-3.5')
+
+    def test_parse_arguments_no_gui(self):
+        """Test --no-gui argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--no-gui']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertFalse(args.gui)
+
+    def test_parse_arguments_auto(self):
+        """Test --auto argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--auto']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertTrue(args.auto)
+
+    def test_parse_arguments_verbose(self):
+        """Test --verbose argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--verbose']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertTrue(args.verbose)
+
+    def test_parse_arguments_temperature(self):
+        """Test --temperature argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--temperature', '0.5']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertEqual(args.temperature, 0.5)
+
+    def test_parse_arguments_max_tokens(self):
+        """Test --max-tokens argument"""
+        with patch('sys.argv', ['aider_wrapper.py', '--max-tokens', '1000']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertEqual(args.max_tokens, 1000)
+
+    def test_parse_arguments_files(self):
+        """Test positional file arguments"""
+        with patch('sys.argv', ['aider_wrapper.py', 'file1.py', 'file2.py']):
+            args = AiderVoiceGUI.parse_arguments()
+            self.assertEqual(args.files, ['file1.py', 'file2.py'])
 
 def create_buffer_manager():
     """Create an AudioBufferManager instance for testing"""
