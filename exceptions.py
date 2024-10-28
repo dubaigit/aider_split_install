@@ -1,5 +1,7 @@
 """Custom exceptions for the Aider Voice Assistant."""
 
+import time
+
 class AiderError(Exception):
     """Base exception class for Aider Voice Assistant."""
     
