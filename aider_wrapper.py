@@ -365,39 +365,7 @@ class AiderVoiceGUI:
         }
 
         # Parse command line arguments
-        parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
-        parser.add_argument(
-            "--voice-only", action="store_true", help="Run in voice control mode only"
-        )
-        parser.add_argument("-i", "--instructions", help="File containing instructions")
-        parser.add_argument(
-            "-c",
-            "--clipboard",
-            action="store_true",
-            help="Use clipboard content as instructions",
-        )
-        parser.add_argument("filenames", nargs="*", help="Filenames to process")
-        parser.add_argument(
-            "--chat-mode",
-            default="code",
-            choices=["code", "ask"],
-            help="Chat mode to use for aider",
-        )
-        parser.add_argument(
-            "--suggest-shell-commands",
-            action="store_true",
-            help="Suggest shell commands while running aider",
-        )
-        parser.add_argument("--model", help="Model to use for aider")
-        parser.add_argument(
-            "--gui", action="store_true", help="Launch the GUI interface"
-        )
-        parser.add_argument(
-            "--auto",
-            action="store_true",
-            help="Automatically send ruff issues to aider (GUI mode only)",
-        )
-        self.args = parser.parse_args()
+        self.args = self.parse_arguments()
 
 
         # Initialize all attributes
