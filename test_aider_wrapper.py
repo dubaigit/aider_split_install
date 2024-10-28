@@ -125,34 +125,34 @@ class AsyncMock(MagicMock):
         raise StopAsyncIteration
 
 # Test fixtures and utilities
-@classmethod
-def setUpClass(cls):
-    """Set up shared test fixtures"""
-    cls.mock_args = cls.create_mock_args()
-    
 @staticmethod
-def mock_args():
-    """Fixture for mocked command line arguments"""
+def create_mock_args():
+    """Create standardized mock arguments for testing"""
     args = MagicMock()
     args.voice_only = False
     args.instructions = None
     args.clipboard = False
     args.chat_mode = "code"
     args.suggest_shell_commands = False
-    args.model = None
+    args.model = "gpt-4"
     args.gui = True
     args.auto = False
+    args.api_key = "test_key"
+    args.verbose = False
+    args.temperature = 0.7
+    args.max_tokens = 2000
+    args.files = []
     return args
 
 @classmethod
-def create_gui_app(cls, mock_args):
-    """Fixture for GUI application instance"""
+def create_gui_app(cls):
+    """Create a GUI application instance with mocked arguments"""
+    mock_args = cls.create_mock_args()
     with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
         root = tk.Tk()
         app = AiderVoiceGUI(root)
         app.setup_gui()
-        yield app
-        root.destroy()
+        return app, root
 
 
     def test_init(self):
@@ -898,9 +898,7 @@ class TestGUIEventHandlers(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment"""
-        self.root = tk.Tk()
-        self.app = AiderVoiceGUI(self.root)
-        self.app.setup_gui()
+        self.app, self.root = self.create_gui_app()
 
     def tearDown(self):
         """Clean up after tests"""
