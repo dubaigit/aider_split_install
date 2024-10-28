@@ -405,25 +405,74 @@ class TestVoiceCommandProcessor(unittest.TestCase):
         self.assertTrue(self.processor.validate_command("test command"))
 
 
-class TestWebSocketManager(unittest.TestCase):
-    def setUp(self):
+class TestWebSocketManager(AsyncTestCase):
+    async def asyncSetUp(self):
         """Set up test environment"""
         self.parent = MagicMock()
+        self.parent.ws = AsyncMock()
         self.manager = WebSocketManager(self.parent)
-        self.mock_ws = AsyncMock()
-        self.mock_ws.ping = AsyncMock()
-        self.parent.ws = self.mock_ws
+        # Initialize with disconnected state
+        self._state = ConnectionState.DISCONNECTED
 
-    async def asyncSetUp(self):
-        """Set up async test environment"""
-        self.manager.connection_state = ConnectionState.DISCONNECTED
-        self.manager.reconnect_attempts = 0
-        self.manager.log_message.reset_mock()
+    async def test_valid_state_transitions(self):
+        """Test valid WebSocket state transitions"""
+        transitions = [
+            (ConnectionState.DISCONNECTED, ConnectionState.CONNECTING),
+            (ConnectionState.CONNECTING, ConnectionState.CONNECTED),
+            (ConnectionState.CONNECTED, ConnectionState.CLOSING),
+            (ConnectionState.CLOSING, ConnectionState.DISCONNECTED),
+        ]
 
-    async def asyncTearDown(self):
-        """Clean up async test environment"""
-        self.manager.connection_state = ConnectionState.DISCONNECTED
-        await asyncio.sleep(0.1)  # Allow pending tasks to complete
+        for from_state, to_state in transitions:
+            self.manager._state = from_state
+            self.manager.connection_state = to_state
+            self.assertEqual(self.manager.connection_state, to_state)
+            self.parent.log_message.assert_called()
+            self.parent.log_message.reset_mock()
+
+    async def test_invalid_state_transitions(self):
+        """Test invalid WebSocket state transitions"""
+        invalid_transitions = [
+            (ConnectionState.DISCONNECTED, ConnectionState.CONNECTED),
+            (ConnectionState.CONNECTED, ConnectionState.CONNECTING),
+            (ConnectionState.FAILED, ConnectionState.CONNECTED),
+        ]
+
+        for from_state, to_state in invalid_transitions:
+            self.manager._state = from_state
+            with self.assertRaises(ValueError):
+                self.manager.connection_state = to_state
+
+    async def test_reconnection_state_tracking(self):
+        """Test reconnection attempt counting and state management"""
+        # Test reconnection attempt increment
+        self.manager._state = ConnectionState.CONNECTING
+        self.manager.connection_state = ConnectionState.RECONNECTING
+        self.assertEqual(self.manager.reconnect_attempts, 1)
+
+        # Test reset on successful connection
+        self.manager.connection_state = ConnectionState.CONNECTED
+        self.assertEqual(self.manager.reconnect_attempts, 0)
+
+        # Test max reconnection attempts
+        self.manager._state = ConnectionState.DISCONNECTED
+        for _ in range(self.manager.max_reconnect_attempts):
+            self.manager.connection_state = ConnectionState.CONNECTING
+            self.manager.connection_state = ConnectionState.RECONNECTING
+
+        self.assertEqual(self.manager.reconnect_attempts, self.manager.max_reconnect_attempts)
+        with self.assertRaises(ValueError):
+            self.manager.connection_state = ConnectionState.RECONNECTING
+
+    async def test_state_transition_logging(self):
+        """Test logging of state transitions"""
+        self.manager._state = ConnectionState.DISCONNECTED
+        self.manager.connection_state = ConnectionState.CONNECTING
+        
+        self.parent.log_message.assert_called_with(
+            "🔄 WebSocket state transition: DISCONNECTED -> CONNECTING\n"
+            "Reason: Initial connection attempt\n"
+        )
 
     def test_init(self):
         """Test initialization"""
