@@ -1268,7 +1268,9 @@ class AiderVoiceGUI:
 
     async def _handle_error_event(self, event):
         """Handle error events"""
-        error_msg = event.get("error", {}).get("message", "Unknown error")
+        error_msg = event.get("error", {}).get(
+            "message", "Unknown error"
+        )
         self.log_message(f"Error from OpenAI: {error_msg}")
         if "active response" in error_msg.lower():
             self.response_active = True
@@ -1303,7 +1305,6 @@ class AiderVoiceGUI:
     async def process_voice_command(self, text):
         """Process transcribed voice commands with enhanced handling"""
         command_processor = VoiceCommandProcessor(self)
-        
         try:
             # Update command history
             self.interface_state.setdefault('command_history', []).append({
