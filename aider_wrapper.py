@@ -1531,6 +1531,8 @@ class ConnectionState(Enum):
     CONNECTED = auto()
     RECONNECTING = auto()
     FAILED = auto()
+    ERROR = auto()
+    CLOSING = auto()
 
 class WebSocketManager:
     """Manages WebSocket connection state and monitoring"""
@@ -1550,28 +1552,43 @@ class WebSocketManager:
             ConnectionState.DISCONNECTED: {
                 ConnectionState.CONNECTING: "Initial connection attempt",
                 ConnectionState.FAILED: "Connection initialization failed",
+                ConnectionState.ERROR: "Connection error occurred",
             },
             ConnectionState.CONNECTING: {
-                ConnectionState.CONNECTED: "Connection established",
+                ConnectionState.CONNECTED: "Connection established successfully",
                 ConnectionState.FAILED: "Connection attempt failed",
-                ConnectionState.RECONNECTING: "Connection lost, attempting reconnect",
+                ConnectionState.RECONNECTING: "Connection lost during handshake",
+                ConnectionState.ERROR: "Connection error during handshake",
                 ConnectionState.DISCONNECTED: "Connection attempt cancelled",
             },
             ConnectionState.CONNECTED: {
-                ConnectionState.DISCONNECTED: "Connection closed normally",
+                ConnectionState.CLOSING: "Connection closing normally",
                 ConnectionState.RECONNECTING: "Connection lost unexpectedly",
+                ConnectionState.ERROR: "Connection error detected",
                 ConnectionState.FAILED: "Connection failed unexpectedly",
             },
             ConnectionState.RECONNECTING: {
                 ConnectionState.CONNECTED: "Reconnection successful",
                 ConnectionState.FAILED: "Reconnection attempts exhausted",
+                ConnectionState.ERROR: "Error during reconnection",
                 ConnectionState.DISCONNECTED: "Reconnection cancelled",
                 ConnectionState.CONNECTING: "Retrying connection",
             },
             ConnectionState.FAILED: {
-                ConnectionState.CONNECTING: "Retrying connection",
+                ConnectionState.CONNECTING: "Retrying connection after failure",
                 ConnectionState.DISCONNECTED: "Connection permanently failed",
+                ConnectionState.ERROR: "Critical error occurred",
                 ConnectionState.RECONNECTING: "Attempting recovery",
+            },
+            ConnectionState.ERROR: {
+                ConnectionState.RECONNECTING: "Attempting recovery from error",
+                ConnectionState.FAILED: "Error recovery failed",
+                ConnectionState.DISCONNECTED: "Shutting down after error",
+            },
+            ConnectionState.CLOSING: {
+                ConnectionState.DISCONNECTED: "Connection closed normally",
+                ConnectionState.ERROR: "Error during close",
+                ConnectionState.FAILED: "Close operation failed",
             }
         }
 
@@ -1614,7 +1631,9 @@ class WebSocketManager:
                 ConnectionState.DISCONNECTED: "❌",
                 ConnectionState.CONNECTING: "🔄",
                 ConnectionState.RECONNECTING: "🔁",
-                ConnectionState.FAILED: "💥"
+                ConnectionState.FAILED: "💥",
+                ConnectionState.ERROR: "⚠️",
+                ConnectionState.CLOSING: "🚪"
             }
             emoji = emoji_map.get(new_state, "")
             details = f"Attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}" if new_state == ConnectionState.RECONNECTING else ""
