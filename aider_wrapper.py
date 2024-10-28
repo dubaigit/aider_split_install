@@ -27,32 +27,12 @@ import websockets
 from websockets.exceptions import WebSocketException
 
 # Custom exceptions
-class AudioProcessingError(Exception):
-    """Custom exception for audio processing errors"""
-
-class WebSocketConnectionError(Exception):
-    """Custom exception for WebSocket connection errors"""
-    def __init__(self, message, original_error=None):
-        super().__init__(message)
-        self.original_error = original_error
-
-class WebSocketTimeoutError(WebSocketConnectionError):
-    """Custom exception for WebSocket timeout errors"""
-
-class WebSocketAuthenticationError(WebSocketConnectionError):
-    """Custom exception for WebSocket authentication errors"""
-
-class AuthenticationError(WebSocketConnectionError):
-    """Custom exception for authentication failures"""
-
-class StateError(Exception):
-    """Custom exception for state-related errors"""
-
-class ValidationError(Exception):
-    """Custom exception for validation errors"""
-
-class AudioError(Exception):
-    """Custom exception for audio-related errors"""
+from exceptions import (
+    AiderError, AudioError, AudioProcessingError, AudioDeviceError,
+    WebSocketError, WebSocketConnectionError, WebSocketTimeoutError,
+    WebSocketAuthenticationError, StateError, ValidationError,
+    ConfigurationError
+)
 
 # Optional third-party imports with fallbacks
 try:
@@ -996,20 +976,49 @@ class AiderVoiceGUI:
             return True
 
         except websockets.exceptions.InvalidStatusCode as e:
-            error = WebSocketAuthenticationError(f"Authentication failed with status {e.status_code}")
+            error = WebSocketAuthenticationError(
+                f"Authentication failed with status {e.status_code}",
+                original_error=e
+            )
             self.error_processor.process_error(error, "websocket")
             self.ws_manager.connection_state = ConnectionState.FAILED
             raise error
 
-        except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
-            self.log_message(f"❌ Connection failed: {type(e).__name__}: {str(e)}")
+        except websockets.exceptions.WebSocketException as e:
+            error = WebSocketConnectionError(
+                "WebSocket protocol error during connection",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "websocket")
             self.ws_manager.connection_state = ConnectionState.FAILED
-            raise WebSocketConnectionError("Failed to establish connection", e)
+            raise error
+
+        except ConnectionError as e:
+            error = WebSocketConnectionError(
+                "Network error during connection",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "websocket")
+            self.ws_manager.connection_state = ConnectionState.FAILED
+            raise error
+
+        except OSError as e:
+            error = WebSocketConnectionError(
+                "System error during connection",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "websocket")
+            self.ws_manager.connection_state = ConnectionState.FAILED
+            raise error
 
         except Exception as e:
-            self.log_message(f"❌ Unexpected error during connection: {type(e).__name__}: {str(e)}")
+            error = AiderError(
+                f"Unexpected error during connection: {type(e).__name__}",
+                original_error=e
+            )
+            self.error_processor.process_error(error, "websocket")
             self.ws_manager.connection_state = ConnectionState.FAILED
-            raise
+            raise error
 
     async def process_audio_queue(self):
         """Process audio queue and send to OpenAI"""
