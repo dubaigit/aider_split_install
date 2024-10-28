@@ -278,85 +278,16 @@ class AiderVoiceGUI:
         # Parse command line arguments
         self.args = self.parse_arguments()
 
-        # Initialize queues
-        self.mic_queue = Queue()
-        self.audio_queue = Queue()
+        # Initialize core components
+        self._init_queues()
+        self._init_audio()
+        self._init_state()
+        self._init_managers()
+        self._init_async()
 
-        # Initialize GUI components
-        self.main_frame = None
-        self.left_panel = None
-        self.control_frame = None
-        self.status_label = None
-        self.add_files_button = None
-        self.check_issues_button = None
-        self.files_frame = None
-        self.files_listbox = None
-        self.remove_file_button = None
-        self.input_frame = None
-        self.input_text = None
-        self.clipboard_button = None
-        self.send_button = None
-        self.right_panel = None
-        self.transcription_frame = None
-        self.transcription_text = None
-        self.issues_frame = None
-        self.issues_text = None
-        self.log_frame = None
-        self.output_text = None
-
-        # Initialize audio components
-        self.audio_buffer = bytearray()
-        self.mic_stream = None
-        self.spkr_stream = None
-        self.chunk_buffer = []
-        self.chunk_buffer_size = 5
-        self.audio_thread = None
-        self.p = pyaudio.PyAudio()
-
-        # Initialize state tracking
-        self.response_active = False
-        self.last_transcript_id = None
-        self.last_audio_time = time.time()
-        self.recording = False
-        self.auto_mode = False
-        self.running = True
-        self.fixing_issues = False
-        self.mic_active = False
-        self.mic_on_at = 0
-        self.stop_event = threading.Event()
-        self.log_frequency = 50
-        self.log_counter = 0
-
-        # Initialize API clients and connections
-        self.client = OpenAI() if OpenAI else None
-        self.ws = None
-        self.aider_process = None
-        self.temp_files = []
-
-        # Initialize interface state
-        self.interface_state = {
-            "files": {},  # Store file contents
-            "issues": [],  # Store detected issues
-            "aider_output": [],  # Store Aider responses
-            "clipboard_history": [],  # Track clipboard content
-            "last_analysis": None,  # Store last analysis results
-            "command_history": [],  # Track command history
-        }
-
-        # Initialize managers
-        self.clipboard_manager = ClipboardManager(self)
-        self.result_processor = ResultProcessor(self)
-        self.error_processor = ErrorProcessor(self)
-        self.ws_manager = WebSocketManager(self)
-        self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
-        self.keyboard_shortcuts = KeyboardShortcuts(self)
-
-        # Initialize asyncio loop
-        self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
-        self.thread.start()
-
-        # Setup GUI components
+        # Setup GUI if enabled
+        if self.args.gui:
+            self.setup_gui()
 
     def log_message(self, message):
         """Log a message to the output text area"""
@@ -1756,123 +1687,6 @@ class WebSocketManager:
             return False
 
 
-def parse_arguments(self, args: list[str] | None = None) -> argparse.Namespace:
-    """Parse and validate command line arguments.
-    
-    Args:
-        args: Optional list of command line arguments to parse.
-            If None, uses sys.argv[1:].
-            
-    Returns:
-        argparse.Namespace: Validated command line arguments.
-        
-    Raises:
-        SystemExit: If invalid arguments are provided.
-        argparse.ArgumentError: If argument validation fails.
-        ValueError: If argument values are invalid.
-    """
-    parser = argparse.ArgumentParser(
-        description="Voice-controlled AI coding assistant with GUI interface",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    
-    # Interface mode arguments
-    mode_group = parser.add_argument_group('Interface Modes')
-    mode_group.add_argument(
-        "--voice-only", 
-        action="store_true",
-        help="Run in voice control mode without GUI"
-    )
-    mode_group.add_argument(
-        "--gui",
-        action="store_true", 
-        help="Launch the graphical user interface",
-        default=True
-    )
-    
-    # Input source arguments  
-    input_group = parser.add_argument_group('Input Sources')
-    input_group.add_argument(
-        "-i", "--instructions",
-        type=str,
-        metavar="FILE",
-        help="Path to file containing instructions"
-    )
-    input_group.add_argument(
-        "-c", "--clipboard",
-        action="store_true",
-        help="Use clipboard content as instructions"
-    )
-    input_group.add_argument(
-        "filenames",
-        nargs="*",
-        metavar="FILE",
-        help="Source code files to process"
-    )
-    
-    # Behavior configuration
-    config_group = parser.add_argument_group('Configuration')
-    config_group.add_argument(
-        "--chat-mode",
-        default="code",
-        choices=["code", "ask"],
-        help="Chat interaction mode: code editing or Q&A"
-    )
-    config_group.add_argument(
-        "--model",
-        type=str,
-        default="gpt-4",
-        help="OpenAI model to use"
-    )
-    config_group.add_argument(
-        "--suggest-shell-commands",
-        action="store_true",
-        help="Enable shell command suggestions"
-    )
-    config_group.add_argument(
-        "--auto",
-        action="store_true", 
-        help="Enable automatic issue fixing (GUI mode only)"
-    )
-
-    try:
-        # Parse arguments
-        parsed_args = parser.parse_args(args)
-        
-        # Validate argument combinations
-        if parsed_args.auto and not parsed_args.gui:
-            parser.error("--auto requires --gui mode")
-            
-        if parsed_args.voice_only and parsed_args.gui:
-            parser.error("Cannot use both --voice-only and --gui modes")
-            
-        # Validate file paths
-        if parsed_args.instructions:
-            if not os.path.isfile(parsed_args.instructions):
-                raise ValueError(f"Instructions file not found: {parsed_args.instructions}")
-            if not os.access(parsed_args.instructions, os.R_OK):
-                raise ValueError(f"Instructions file not readable: {parsed_args.instructions}")
-                
-        if parsed_args.filenames:
-            for filename in parsed_args.filenames:
-                if not os.path.isfile(filename):
-                    raise ValueError(f"Source file not found: {filename}")
-                if not os.access(filename, os.R_OK):
-                    raise ValueError(f"Source file not readable: {filename}")
-                    
-        # Store validated arguments
-        self.args = parsed_args
-        return parsed_args
-        
-    except argparse.ArgumentError as e:
-        self.log_message(f"Error parsing arguments: {e}")
-        raise
-    except ValueError as e:
-        self.log_message(f"Error validating arguments: {e}")
-        raise
-    except Exception as e:
-        self.log_message(f"Unexpected error parsing arguments: {e}")
-        raise
 
 def main():
     """Main entry point for the Aider Voice Assistant"""
@@ -1893,3 +1707,68 @@ def main():
 if __name__ == "__main__":
     main()
 
+    def _init_queues(self):
+        """Initialize queue components"""
+        self.mic_queue = Queue()
+        self.audio_queue = Queue()
+
+    def _init_audio(self):
+        """Initialize audio components"""
+        self.audio_buffer = bytearray()
+        self.mic_stream = None
+        self.spkr_stream = None
+        self.chunk_buffer = []
+        self.chunk_buffer_size = 5
+        self.audio_thread = None
+        self.p = pyaudio.PyAudio()
+
+    def _init_state(self):
+        """Initialize state tracking"""
+        # Response state
+        self.response_active = False
+        self.last_transcript_id = None
+        self.last_audio_time = time.time()
+        
+        # Control flags
+        self.recording = False
+        self.auto_mode = False
+        self.running = True
+        self.fixing_issues = False
+        self.mic_active = False
+        self.mic_on_at = 0
+        
+        # Event handling
+        self.stop_event = threading.Event()
+        self.log_frequency = 50
+        self.log_counter = 0
+
+        # API clients
+        self.client = OpenAI() if OpenAI else None
+        self.ws = None
+        self.aider_process = None
+        self.temp_files = []
+
+        # Interface state
+        self.interface_state = {
+            "files": {},  # Store file contents
+            "issues": [],  # Store detected issues
+            "aider_output": [],  # Store Aider responses
+            "clipboard_history": [],  # Track clipboard content
+            "last_analysis": None,  # Store last analysis results
+            "command_history": [],  # Track command history
+        }
+
+    def _init_managers(self):
+        """Initialize manager components"""
+        self.clipboard_manager = ClipboardManager(self)
+        self.result_processor = ResultProcessor(self)
+        self.error_processor = ErrorProcessor(self)
+        self.ws_manager = WebSocketManager(self)
+        self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
+        self.keyboard_shortcuts = KeyboardShortcuts(self)
+
+    def _init_async(self):
+        """Initialize async components"""
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.run_async_loop, daemon=True)
+        self.thread.start()
