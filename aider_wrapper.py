@@ -403,7 +403,10 @@ class AiderVoiceGUI:
         self.root = root
         self.root.title("Aider Voice Assistant")
 
-        # Parse command line arguments first
+        # Initialize all instance attributes to None/empty first
+        self._init_attributes()
+
+        # Parse command line arguments
         self.args = self.parse_arguments()
 
         # Initialize interface state
@@ -415,9 +418,6 @@ class AiderVoiceGUI:
             "last_analysis": None,  # Store last analysis results
             "command_history": [],  # Track command history
         }
-
-        # Initialize all instance attributes to None/empty
-        self._init_attributes()
 
         # Initialize components in dependency order
         self._init_queues()
