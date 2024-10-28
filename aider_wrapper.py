@@ -478,6 +478,7 @@ class AiderVoiceGUI:
             "aider_output": [],  # Store Aider responses
             "clipboard_history": [],  # Track clipboard content
             "last_analysis": None,  # Store last analysis results
+            "command_history": [],  # Track command history
         }
 
         # Setup GUI components
