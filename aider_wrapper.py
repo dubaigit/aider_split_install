@@ -616,6 +616,7 @@ class AiderVoiceGUI:
         self.result_processor = ResultProcessor(self)
         self.error_processor = ErrorProcessor(self)
         self.ws_manager = WebSocketManager(self)
+        self.file_manager = FileManager(self)
         self.performance_monitor = PerformanceMonitor(["cpu", "memory", "latency"])
         self.keyboard_shortcuts = KeyboardShortcuts(self)
 
@@ -634,11 +635,27 @@ class AiderVoiceGUI:
 
     def browse_files(self):
         """Open file browser dialog to select files"""
-        files = filedialog.askopenfilenames()
-        for file in files:
-            if file not in self.interface_state['files']:
-                self.interface_state['files'][file] = None
-                self.files_listbox.insert(tk.END, file)
+        try:
+            files = filedialog.askopenfilenames()
+            for file in files:
+                if not os.path.exists(file):
+                    self.log_message(f"⚠️ File not found: {file}")
+                    continue
+                    
+                if not os.access(file, os.R_OK):
+                    self.log_message(f"⚠️ No read permission: {file}")
+                    continue
+                    
+                if file not in self.interface_state['files']:
+                    try:
+                        with open(file, 'r', encoding='utf-8') as f:
+                            self.interface_state['files'][file] = f.read()
+                        self.files_listbox.insert(tk.END, file)
+                        self.log_message(f"✅ Added file: {file}")
+                    except Exception as e:
+                        self.log_message(f"❌ Error reading file {file}: {str(e)}")
+        except Exception as e:
+            self.log_message(f"❌ Error browsing files: {str(e)}")
 
     def check_all_issues(self):
         """Check all files for issues"""
@@ -648,11 +665,15 @@ class AiderVoiceGUI:
 
     def remove_selected_file(self):
         """Remove selected file from listbox"""
-        selection = self.files_listbox.curselection()
-        if selection:
-            file = self.files_listbox.get(selection)
-            self.files_listbox.delete(selection)
-            del self.interface_state['files'][file]
+        try:
+            selection = self.files_listbox.curselection()
+            if selection:
+                file = self.files_listbox.get(selection)
+                self.files_listbox.delete(selection)
+                del self.interface_state['files'][file]
+                self.log_message(f"🗑️ Removed file: {file}")
+        except Exception as e:
+            self.log_message(f"❌ Error removing file: {str(e)}")
 
     def use_clipboard_content(self):
         """Load clipboard content into input text"""
