@@ -9,7 +9,7 @@ import os
 import threading
 import time
 from contextlib import contextmanager
-from queue import Empty, Queue
+from queue import Empty as QueueEmpty, Queue
 
 # GUI imports
 import tkinter as tk
@@ -94,7 +94,7 @@ class AudioBufferManager:
                 else:
                     self.stats["overflows"] += 1
                     break
-            except queue.Empty:
+            except QueueEmpty:
                 break
         return chunks
 
@@ -936,7 +936,7 @@ class AiderVoiceGUI:
                 # Try to get data from queue with timeout
                 try:
                     mic_chunk = self.mic_queue.get_nowait()
-                except Empty:
+                except QueueEmpty:
                     # Queue is empty, wait briefly and continue
                     await asyncio.sleep(0.05)
                     continue
