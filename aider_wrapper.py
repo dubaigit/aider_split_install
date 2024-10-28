@@ -1511,12 +1511,29 @@ class WebSocketManager:
         self.monitoring_task = None
         self.log_message = parent.log_message
         self.ws = parent.ws
+        # Define valid state transitions
         self._state_transitions = {
-            ConnectionState.DISCONNECTED: [ConnectionState.CONNECTING],
-            ConnectionState.CONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED, ConnectionState.RECONNECTING],
-            ConnectionState.CONNECTED: [ConnectionState.DISCONNECTED, ConnectionState.RECONNECTING],
-            ConnectionState.RECONNECTING: [ConnectionState.CONNECTED, ConnectionState.FAILED, ConnectionState.DISCONNECTED],
-            ConnectionState.FAILED: [ConnectionState.CONNECTING, ConnectionState.DISCONNECTED]
+            ConnectionState.DISCONNECTED: {
+                ConnectionState.CONNECTING: "Initial connection attempt",
+            },
+            ConnectionState.CONNECTING: {
+                ConnectionState.CONNECTED: "Connection established",
+                ConnectionState.FAILED: "Connection attempt failed",
+                ConnectionState.RECONNECTING: "Connection lost, attempting reconnect",
+            },
+            ConnectionState.CONNECTED: {
+                ConnectionState.DISCONNECTED: "Connection closed normally",
+                ConnectionState.RECONNECTING: "Connection lost unexpectedly",
+            },
+            ConnectionState.RECONNECTING: {
+                ConnectionState.CONNECTED: "Reconnection successful",
+                ConnectionState.FAILED: "Reconnection attempts exhausted",
+                ConnectionState.DISCONNECTED: "Reconnection cancelled",
+            },
+            ConnectionState.FAILED: {
+                ConnectionState.CONNECTING: "Retrying connection",
+                ConnectionState.DISCONNECTED: "Connection permanently failed",
+            }
         }
 
     @property 
@@ -1530,12 +1547,17 @@ class WebSocketManager:
         if not isinstance(new_state, ConnectionState):
             raise ValueError(f"Invalid state type: {type(new_state)}")
             
+        # Validate state transition
         if new_state not in self._state_transitions[self._state]:
+            valid_transitions = [f"{s.name} ({reason})" for s, reason in self._state_transitions[self._state].items()]
             self.log_message(f"⚠️ Invalid state transition attempted: {self._state.name} -> {new_state.name}")
             raise ValueError(
-                f"Invalid state transition from {self._state.name} to {new_state.name}. "
-                f"Valid transitions are: {[s.name for s in self._state_transitions[self._state]]}"
+                f"Invalid state transition from {self._state.name} to {new_state.name}.\n"
+                f"Valid transitions are:\n" + "\n".join(f"- {t}" for t in valid_transitions)
             )
+
+        # Get transition reason
+        transition_reason = self._state_transitions[self._state][new_state]
             
         old_state = self._state
         self._state = new_state
@@ -1549,7 +1571,7 @@ class WebSocketManager:
             ConnectionState.FAILED: "💥"
         }
         emoji = emoji_map.get(new_state, "")
-        self.log_message(f"{emoji} WebSocket state changed: {old_state.name} -> {new_state.name}")
+        self.log_message(f"{emoji} WebSocket state changed: {old_state.name} -> {new_state.name} ({transition_reason})")
 
     async def start_monitoring(self):
         """Start connection monitoring"""
