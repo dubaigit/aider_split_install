@@ -1272,41 +1272,32 @@ class TestVoiceCommandProcessor(AsyncTestCase):
         self.parent = MagicMock()
         self.processor = VoiceCommandProcessor(self.parent)
 
-    def test_validate_command_empty(self):
+    async def test_validate_command_empty(self):
         """Test validation of empty commands"""
-        async def _test():
-            with self.assertLogs(level='WARNING') as log:
-                self.assertFalse(await self.processor.validate_command(""))
-                self.assertFalse(await self.processor.validate_command(None))
-                self.assertFalse(await self.processor.validate_command("   "))
-            self.assertTrue(any("empty command" in msg.lower() for msg in log.output))
-        
-        self.run_async_test(_test())
+        with self.assertLogs(level='WARNING') as log:
+            self.assertFalse(self.processor.validate_command(""))
+            self.assertFalse(self.processor.validate_command(None))
+            self.assertFalse(self.processor.validate_command("   "))
+        self.assertTrue(any("empty command" in msg.lower() for msg in log.output))
 
-    def test_validate_command_length(self):
+    async def test_validate_command_length(self):
         """Test validation of command length"""
-        async def _test():
-            with self.assertLogs(level='WARNING') as log:
-                long_command = "a" * 1001
-                self.assertFalse(await self.processor.validate_command(long_command))
-                self.assertTrue(any("command too long" in msg.lower() for msg in log.output))
+        with self.assertLogs(level='WARNING') as log:
+            long_command = "a" * 1001
+            self.assertFalse(self.processor.validate_command(long_command))
+            self.assertTrue(any("command too long" in msg.lower() for msg in log.output))
 
-            valid_command = "a" * 1000
-            self.assertTrue(await self.processor.validate_command(valid_command))
-            
-        self.run_async_test(_test())
+        valid_command = "a" * 1000
+        self.assertTrue(self.processor.validate_command(valid_command))
 
-    def test_validate_command_profanity(self):
+    async def test_validate_command_profanity(self):
         """Test validation of command content"""
-        async def _test():
-            with self.assertLogs(level='WARNING') as log:
-                self.assertFalse(await self.processor.validate_command("profanity1 test"))
-                self.assertFalse(await self.processor.validate_command("test profanity2"))
-                self.assertTrue(any("inappropriate content" in msg.lower() for msg in log.output))
+        with self.assertLogs(level='WARNING') as log:
+            self.assertFalse(self.processor.validate_command("profanity1 test"))
+            self.assertFalse(self.processor.validate_command("test profanity2"))
+            self.assertTrue(any("inappropriate content" in msg.lower() for msg in log.output))
 
-            self.assertTrue(await self.processor.validate_command("normal command"))
-            
-        self.run_async_test(_test())
+        self.assertTrue(self.processor.validate_command("normal command"))
 
 class TestArgumentParsing(unittest.TestCase):
     """Test command line argument parsing"""
@@ -1424,25 +1415,29 @@ class TestGUIEventHandlers(AsyncTestCase):
         # Create mock event
         event = type('Event', (), {'widget': None})()
         
-        async def trigger_and_verify(key, method_name):
+        # Test each shortcut individually
+        shortcuts = {
+            '<Control-r>': 'check_all_issues',
+            '<Control-a>': 'browse_files',
+            '<Control-v>': 'use_clipboard_content', 
+            '<Control-s>': 'send_input_text',
+            '<Escape>': 'stop_voice_control'
+        }
+
+        for key, method_name in shortcuts.items():
             with patch.object(self.app, method_name) as mock_method:
                 self.app.root.event_generate(key)
                 await asyncio.sleep(0.1)  # Allow event processing
                 self.root.update()
                 mock_method.assert_called_once()
+                mock_method.reset_mock()
 
-        # Test all shortcuts
-        await trigger_and_verify('<Control-r>', 'check_all_issues')
-        await trigger_and_verify('<Control-a>', 'browse_files')
-        await trigger_and_verify('<Control-v>', 'use_clipboard_content')
-        await trigger_and_verify('<Control-s>', 'send_input_text')
-        await trigger_and_verify('<Escape>', 'stop_voice_control')
-
-        # Verify no unexpected shortcuts
-        with self.assertNotRaises(Exception):
+        # Test invalid shortcut
+        with patch.object(self.app, 'log_message') as mock_log:
             self.app.root.event_generate('<Control-x>')
             await asyncio.sleep(0.1)
             self.root.update()
+            mock_log.assert_not_called()
 
 
 class ClipboardManager:
