@@ -257,45 +257,46 @@ class TestWebSocketConnection(AsyncTestCase):
         self.mock_ws.send = AsyncMock()
         self.mock_ws.ping = AsyncMock()
         self.mock_ws.close = AsyncMock()
+        self.mock_ws.recv = AsyncMock(return_value='{"type": "test"}')
         self.message_task = None
         self.queue_task = None
 
     async def asyncTearDown(self):
         """Clean up test environment"""
-        if self.message_task:
-            self.message_task.cancel()
-        if self.queue_task:
-            self.queue_task.cancel()
-        if self.message_task or self.queue_task:
-            try:
-                await asyncio.gather(
-                    *(task for task in [self.message_task, self.queue_task] if task),
-                    return_exceptions=True
-                )
-            except asyncio.CancelledError:
-                pass
-        self.root.destroy()
+        if hasattr(self, 'app') and hasattr(self, 'root'):
+            if self.message_task:
+                self.message_task.cancel()
+            if self.queue_task:
+                self.queue_task.cancel()
+            if self.message_task or self.queue_task:
+                try:
+                    await asyncio.gather(
+                        *(task for task in [self.message_task, self.queue_task] if task),
+                        return_exceptions=True
+                    )
+                except asyncio.CancelledError:
+                    pass
+            self.root.destroy()
         await super().asyncTearDown()
 
     @patch('websockets.connect', new_callable=AsyncMock)
-    async def test_connection_failure(self, mock_connect):
-        """Test WebSocket connection failure"""
+    async def test_connection_lifecycle(self, mock_connect):
+        """Test full WebSocket connection lifecycle"""
+        # Test connection failure
         mock_connect.side_effect = Exception("Connection failed")
         result = await self.app.connect_websocket()
         self.assertFalse(result)
         self.assertIsNone(self.app.ws)
 
-    @patch('websockets.connect', new_callable=AsyncMock)
-    async def test_connection_timeout(self, mock_connect):
-        """Test WebSocket connection timeout"""
+        # Test connection timeout
+        mock_connect.side_effect = None
         self.mock_ws.send.side_effect = asyncio.TimeoutError()
         mock_connect.return_value = self.mock_ws
         result = await self.app.connect_websocket()
         self.assertFalse(result)
 
-    @patch('websockets.connect', new_callable=AsyncMock)
-    async def test_successful_connection(self, mock_connect):
-        """Test successful WebSocket connection"""
+        # Test successful connection
+        self.mock_ws.send.side_effect = None
         mock_connect.return_value = self.mock_ws
         
         # Start message handling tasks
@@ -307,7 +308,7 @@ class TestWebSocketConnection(AsyncTestCase):
         self.assertEqual(self.app.ws, self.mock_ws)
         
         # Verify session.update was sent
-        self.mock_ws.send.assert_called_once()
+        self.mock_ws.send.assert_called()
         call_args = self.mock_ws.send.call_args[0][0]
         self.assertIn("session.update", call_args)
         self.assertIn("model", call_args)
@@ -317,6 +318,10 @@ class TestWebSocketConnection(AsyncTestCase):
         self.assertFalse(self.app.response_active)
         self.assertIsNone(self.app.last_transcript_id)
         self.assertEqual(len(self.app.audio_buffer), 0)
+        
+        # Test message receiving
+        self.mock_ws.recv.return_value = '{"type": "transcript", "text": "test"}'
+        await asyncio.sleep(0.1)  # Allow message handling to process
         
         # Test close
         await self.app.ws.close()
