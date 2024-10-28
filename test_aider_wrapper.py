@@ -157,32 +157,6 @@ async def run_async_test(coro):
     finally:
         await asyncio.sleep(0)  # Allow other tasks to run
 
-class AsyncMock(MagicMock):
-    """Mock class that supports async methods and special method handling"""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Set default return values for special methods
-        self.side_effect = lambda: True
-        
-    async def __call__(self, *args, **kwargs):
-        return super(AsyncMock, self).__call__(*args, **kwargs)
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        pass
-
-    def __await__(self):
-        async def dummy():
-            return self
-        return dummy().__await__()
-
-    async def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        raise StopAsyncIteration
 
 # Test fixtures and utilities
 
