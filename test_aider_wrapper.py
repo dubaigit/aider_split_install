@@ -8,6 +8,7 @@ import time
 from queue import Queue
 import websockets
 import pyaudio
+from contextlib import contextmanager
 from aider_wrapper import (
     AiderVoiceGUI,
     AudioBufferManager,
