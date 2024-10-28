@@ -38,7 +38,11 @@ class AsyncMock(MagicMock):
         result = super().__call__(*args, **kwargs)
         if asyncio.iscoroutine(result):
             return await result
-        return result
+        elif self._side_effect is not None:
+            if asyncio.iscoroutine(self._side_effect):
+                return await self._side_effect
+            return self._side_effect()
+        return self._return_value
 
     async def __aenter__(self) -> 'AsyncMock':
         result = super().__call__()
