@@ -247,7 +247,20 @@ class VoiceCommandProcessor:
 
 class AiderVoiceGUI:
     """A voice-controlled graphical interface for the Aider code assistant.
+    
+    This class provides a GUI wrapper around Aider with voice control capabilities,
+    allowing users to interact with Aider through voice commands and a graphical interface.
+    It handles audio processing, WebSocket communication with OpenAI's API, and provides
+    visual feedback through various GUI components.
 
+    Key Features:
+    - Voice command processing and transcription
+    - Real-time audio streaming to OpenAI's API
+    - GUI components for file management and issue tracking
+    - Clipboard integration for code sharing
+    - Asynchronous WebSocket communication
+    - Performance monitoring and error handling
+    """
 
     @staticmethod
     def parse_arguments(args=None):
