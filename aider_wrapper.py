@@ -131,9 +131,18 @@ class AudioBufferManager:
         """Combine chunks with error checking"""
         try:
             return b"".join(chunks)
+        except (ValueError, TypeError) as e:
+            self.stats["drops"] += 1
+            raise AudioProcessingError(
+                f"Error combining audio chunks: {str(e)}",
+                original_error=e
+            ) from e
         except Exception as e:
             self.stats["drops"] += 1
-            raise AudioProcessingError(f"Error combining chunks: {e}") from e
+            raise AudioError(
+                f"Unexpected error in audio processing: {type(e).__name__}",
+                original_error=e
+            ) from e
 
     def get_usage(self):
         """Get current buffer usage ratio"""
