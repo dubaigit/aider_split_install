@@ -276,39 +276,7 @@ class AiderVoiceGUI:
         self.root.title("Aider Voice Assistant")
 
         # Parse command line arguments
-        parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
-        parser.add_argument(
-            "--voice-only", action="store_true", help="Run in voice control mode only"
-        )
-        parser.add_argument("-i", "--instructions", help="File containing instructions")
-        parser.add_argument(
-            "-c",
-            "--clipboard",
-            action="store_true",
-            help="Use clipboard content as instructions",
-        )
-        parser.add_argument("filenames", nargs="*", help="Filenames to process")
-        parser.add_argument(
-            "--chat-mode",
-            default="code",
-            choices=["code", "ask"],
-            help="Chat mode to use for aider",
-        )
-        parser.add_argument(
-            "--suggest-shell-commands",
-            action="store_true",
-            help="Suggest shell commands while running aider",
-        )
-        parser.add_argument("--model", help="Model to use for aider")
-        parser.add_argument(
-            "--gui", action="store_true", help="Launch the GUI interface"
-        )
-        parser.add_argument(
-            "--auto",
-            action="store_true",
-            help="Automatically send ruff issues to aider (GUI mode only)",
-        )
-        self.args = parser.parse_args()
+        self.args = self.parse_arguments()
 
         # Initialize queues
         self.mic_queue = Queue()
@@ -1262,6 +1230,46 @@ class TestVoiceCommandProcessor(unittest.TestCase):
         self.assertFalse(self.processor.validate_command("test profanity2"))
         self.assertTrue(self.processor.validate_command("normal command"))
 
+class TestArgumentParsing(unittest.TestCase):
+    """Test command line argument parsing"""
+
+    def test_default_arguments(self):
+        """Test default argument values"""
+        args = AiderVoiceGUI.parse_arguments([])
+        self.assertFalse(args.voice_only)
+        self.assertIsNone(args.instructions)
+        self.assertFalse(args.clipboard)
+        self.assertEqual(args.filenames, [])
+        self.assertEqual(args.chat_mode, "code")
+        self.assertFalse(args.suggest_shell_commands)
+        self.assertIsNone(args.model)
+        self.assertFalse(args.gui)
+        self.assertFalse(args.auto)
+
+    def test_custom_arguments(self):
+        """Test custom argument values"""
+        test_args = [
+            "--voice-only",
+            "-i", "instructions.txt",
+            "-c",
+            "--chat-mode", "ask",
+            "--suggest-shell-commands",
+            "--model", "gpt-4",
+            "--gui",
+            "--auto",
+            "file1.py", "file2.py"
+        ]
+        args = AiderVoiceGUI.parse_arguments(test_args)
+        self.assertTrue(args.voice_only)
+        self.assertEqual(args.instructions, "instructions.txt")
+        self.assertTrue(args.clipboard)
+        self.assertEqual(args.filenames, ["file1.py", "file2.py"])
+        self.assertEqual(args.chat_mode, "ask")
+        self.assertTrue(args.suggest_shell_commands)
+        self.assertEqual(args.model, "gpt-4")
+        self.assertTrue(args.gui)
+        self.assertTrue(args.auto)
+
 class TestGUIEventHandlers(unittest.TestCase):
     """Test GUI event handlers and keyboard shortcuts"""
 
@@ -1527,6 +1535,43 @@ class WebSocketManager:
             self.connection_state = ConnectionState.FAILED
             return False
 
+
+@staticmethod
+def parse_arguments(args=None):
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="Voice-controlled Aider wrapper")
+    parser.add_argument(
+        "--voice-only", action="store_true", help="Run in voice control mode only"
+    )
+    parser.add_argument("-i", "--instructions", help="File containing instructions")
+    parser.add_argument(
+        "-c",
+        "--clipboard",
+        action="store_true", 
+        help="Use clipboard content as instructions",
+    )
+    parser.add_argument("filenames", nargs="*", help="Filenames to process")
+    parser.add_argument(
+        "--chat-mode",
+        default="code",
+        choices=["code", "ask"],
+        help="Chat mode to use for aider",
+    )
+    parser.add_argument(
+        "--suggest-shell-commands",
+        action="store_true",
+        help="Suggest shell commands while running aider",
+    )
+    parser.add_argument("--model", help="Model to use for aider")
+    parser.add_argument(
+        "--gui", action="store_true", help="Launch the GUI interface"
+    )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="Automatically send ruff issues to aider (GUI mode only)",
+    )
+    return parser.parse_args(args)
 
 def main():
     """Main entry point for the Aider Voice Assistant"""
