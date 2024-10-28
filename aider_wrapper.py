@@ -1045,7 +1045,7 @@ class AiderVoiceGUI:
             self.audio_buffer = bytearray(
                 self.audio_buffer[bytes_needed:]
             )  # Convert slice to bytearray
-            self.mic_on_at = time.time() + REENGAGE_DELAY_MS / 1000
+            self.mic_on_at = time.time() + REENGAGE_DELAY_MILLISECONDS / 1000
         else:
             audio_chunk = bytes(self.audio_buffer) + b"\x00" * (
                 bytes_needed - current_buffer_size
