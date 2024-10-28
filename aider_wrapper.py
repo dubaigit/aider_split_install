@@ -89,9 +89,8 @@ SAMPLE_RATE = 24000
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 REENGAGE_DELAY_MS = 500
-OPENAI_WEBSOCKET_URL = (
-    "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
-)
+OPENAI_WEBSOCKET_URL = ("wss://api.openai.com/v1/realtime"
+                       "?model=gpt-4o-realtime-preview-2024-10-01")
 
 class ConnectionState(Enum):
     """Enum for WebSocket connection states"""
@@ -1428,7 +1427,11 @@ class ClipboardManager:
         self.error_cooldown = 60  # seconds
 
     def get_current_content(self):
-        """Get and process current clipboard content"""
+        """Get and process current clipboard content.
+        
+        Returns:
+            str: The processed clipboard content
+        """
         content = pyperclip.paste()
         content_type = self.detect_content_type(content)
         return self.processors[content_type](content)
