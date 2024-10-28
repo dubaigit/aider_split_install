@@ -903,19 +903,24 @@ class TestClipboardManager(unittest.TestCase):
     def test_get_current_content(self, mock_paste):
         """Test getting current clipboard content"""
         # Test code content
-        mock_paste.return_value = "def test():\n    pass\n"
+        mock_paste.return_value = "def test():\n    pass  \n\n"  # Extra spaces and newlines
         result = self.manager.get_current_content()
-        self.assertEqual(result, "def test():\n    pass\n")
+        self.assertEqual(result, "def test():\n    pass\n")  # Should be cleaned
 
         # Test URL content
-        mock_paste.return_value = "https://example.com"
+        mock_paste.return_value = "  https://example.com  \n"  # Extra whitespace
         result = self.manager.get_current_content()
-        self.assertEqual(result, "https://example.com")
+        self.assertEqual(result, "https://example.com")  # Should be stripped
 
         # Test text content
-        mock_paste.return_value = "regular text"
+        mock_paste.return_value = "  regular text  \n"  # Extra whitespace
         result = self.manager.get_current_content()
-        self.assertEqual(result, "regular text")
+        self.assertEqual(result, "regular text")  # Should be stripped
+
+        # Test empty content
+        mock_paste.return_value = ""
+        result = self.manager.get_current_content()
+        self.assertEqual(result, "")
 
 def run_async_test(coro):
     """Helper function to run async tests"""
