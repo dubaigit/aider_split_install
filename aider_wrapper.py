@@ -933,23 +933,27 @@ class AiderVoiceGUI:
         """Process audio queue and send to OpenAI"""
         while self.recording:
             try:
+                # Try to get data from queue with timeout
                 try:
                     mic_chunk = self.mic_queue.get_nowait()
-                    self.log_message(f"🎤 Processing {len(mic_chunk)} bytes of audio data.")
-
-                    # Send audio data to OpenAI
-                    await self.ws.send(
-                        json.dumps(
-                            {
-                                "type": "input_audio_buffer.append",
-                                "audio": base64.b64encode(mic_chunk).decode("utf-8"),
-                            }
-                        )
-                    )
                 except Empty:
-                    # Queue is empty, just wait a bit
+                    # Queue is empty, wait briefly and continue
                     await asyncio.sleep(0.05)
                     continue
+                
+                # Process the chunk if we got one
+                try:
+                    if mic_chunk:
+                        self.log_message(f"🎤 Processing {len(mic_chunk)} bytes of audio data.")
+                        # Send audio data to OpenAI
+                        await self.ws.send(
+                            json.dumps(
+                                {
+                                    "type": "input_audio_buffer.append",
+                                    "audio": base64.b64encode(mic_chunk).decode("utf-8"),
+                                }
+                            )
+                        )
                 except websockets.exceptions.WebSocketException as e:
                     self.log_message(f"WebSocket error sending audio data: {e}")
                 except json.JSONDecodeError as e:
