@@ -1208,22 +1208,59 @@ class AiderVoiceGUI:
 
 
 class AsyncTestCase(unittest.TestCase):
-    """Base class for async tests with helper methods"""
-    
+    """Base class for async tests with enhanced async support"""
+
     def setUp(self):
+        """Set up test environment with proper async context"""
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        
-    def tearDown(self):
+        self.addCleanup(self.cleanup_loop)
+
+    def cleanup_loop(self):
+        """Clean up the event loop"""
+        self.loop.run_until_complete(self.loop.shutdown_asyncgens())
         self.loop.close()
         asyncio.set_event_loop(None)
-        
+
+    async def asyncSetUp(self):
+        """Optional async setup - override in subclasses"""
+        pass
+
+    async def asyncTearDown(self):
+        """Optional async teardown - override in subclasses"""
+        pass
+
     def run_async_test(self, coro):
-        """Run coroutine in the test loop with error handling"""
+        """Run coroutine in the test loop with enhanced error handling"""
+        async def _run_with_setup():
+            await self.asyncSetUp()
+            try:
+                result = await coro
+                return result
+            finally:
+                await self.asyncTearDown()
+
         try:
-            return self.loop.run_until_complete(coro)
+            return self.loop.run_until_complete(_run_with_setup())
         except Exception as e:
-            self.fail(f"Async test failed with error: {e}")
+            self.fail(f"Async test failed with error: {type(e).__name__}: {e}")
+
+    @contextmanager
+    def assertNotRaises(self, exc_type):
+        """Context manager to assert no exception is raised"""
+        try:
+            yield
+        except exc_type as e:
+            self.fail(f"Expected no {exc_type.__name__} but got: {e}")
+
+    async def wait_for_condition(self, condition_func, timeout=5.0, interval=0.1):
+        """Wait for a condition to become true with timeout"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if condition_func():
+                return True
+            await asyncio.sleep(interval)
+        return False
 
 class TestVoiceCommandProcessor(AsyncTestCase):
     """Test suite for VoiceCommandProcessor functionality"""
@@ -1375,40 +1412,30 @@ class TestGUIEventHandlers(AsyncTestCase):
         """Clean up test environment"""
         self.root.destroy()
 
-    def test_keyboard_shortcuts(self):
-        """Test keyboard shortcut bindings and handlers"""
+    async def test_keyboard_shortcuts(self):
+        """Test keyboard shortcut bindings and handlers with async support"""
         # Create mock event
         event = type('Event', (), {'widget': None})()
         
-        # Test Control-r shortcut (check issues)
-        with patch.object(self.app, 'check_all_issues') as mock_check:
-            self.app.root.event_generate('<Control-r>')
-            self.root.update()
-            mock_check.assert_called_once()
+        async def trigger_and_verify(key, method_name):
+            with patch.object(self.app, method_name) as mock_method:
+                self.app.root.event_generate(key)
+                await asyncio.sleep(0.1)  # Allow event processing
+                self.root.update()
+                mock_method.assert_called_once()
 
-        # Test Control-a shortcut (browse files)
-        with patch.object(self.app, 'browse_files') as mock_browse:
-            self.app.root.event_generate('<Control-a>')
-            self.root.update()
-            mock_browse.assert_called_once()
+        # Test all shortcuts
+        await trigger_and_verify('<Control-r>', 'check_all_issues')
+        await trigger_and_verify('<Control-a>', 'browse_files')
+        await trigger_and_verify('<Control-v>', 'use_clipboard_content')
+        await trigger_and_verify('<Control-s>', 'send_input_text')
+        await trigger_and_verify('<Escape>', 'stop_voice_control')
 
-        # Test Control-v shortcut (use clipboard)
-        with patch.object(self.app, 'use_clipboard_content') as mock_clipboard:
-            self.app.root.event_generate('<Control-v>')
+        # Verify no unexpected shortcuts
+        with self.assertNotRaises(Exception):
+            self.app.root.event_generate('<Control-x>')
+            await asyncio.sleep(0.1)
             self.root.update()
-            mock_clipboard.assert_called_once()
-
-        # Test Control-s shortcut (send text)
-        with patch.object(self.app, 'send_input_text') as mock_send:
-            self.app.root.event_generate('<Control-s>')
-            self.root.update()
-            mock_send.assert_called_once()
-
-        # Test Escape shortcut (stop voice)
-        with patch.object(self.app, 'stop_voice_control') as mock_stop:
-            self.app.root.event_generate('<Escape>')
-            self.root.update()
-            mock_stop.assert_called_once()
 
 
 class ClipboardManager:
