@@ -538,8 +538,14 @@ class TestWebSocketManager(unittest.TestCase):
 
     def test_attempt_reconnect_sync(self):
         """Test attempt_reconnect using sync wrapper"""
-        self.run_async_test(self.test_attempt_reconnect_success())
-        self.run_async_test(self.test_attempt_reconnect_failure())
+        async def test_success():
+            await self.test_attempt_reconnect_success()
+            
+        async def test_failure():
+            await self.test_attempt_reconnect_failure()
+            
+        self.run_async_test(test_success())
+        self.run_async_test(test_failure())
 
 class TestAudioProcessing(unittest.TestCase):
     """Test audio processing functionality"""
