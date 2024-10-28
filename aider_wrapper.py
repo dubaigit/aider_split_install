@@ -1699,53 +1699,95 @@ class WebSocketManager:
 
 @classmethod
 def parse_arguments(cls, args=None):
-    """Parse command line arguments with proper error handling
+    """Parse and validate command line arguments.
     
     Args:
-        args: List of command line arguments to parse
-        
+        args: Optional list of command line arguments to parse.
+            If None, uses sys.argv[1:].
+            
     Returns:
-        argparse.Namespace: Parsed command line arguments
+        argparse.Namespace: Validated command line arguments.
         
     Raises:
-        SystemExit: If invalid arguments are provided
+        SystemExit: If invalid arguments are provided.
+        ValueError: If argument validation fails.
     """
     parser = argparse.ArgumentParser(
-        description="Voice-controlled Aider wrapper",
+        description="Voice-controlled AI coding assistant with GUI interface",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument(
-        "--voice-only", action="store_true", help="Run in voice control mode only"
+    
+    # Interface mode arguments
+    mode_group = parser.add_argument_group('Interface Modes')
+    mode_group.add_argument(
+        "--voice-only", 
+        action="store_true",
+        help="Run in voice control mode without GUI"
     )
-    parser.add_argument("-i", "--instructions", help="File containing instructions")
-    parser.add_argument(
-        "-c",
-        "--clipboard",
+    mode_group.add_argument(
+        "--gui",
         action="store_true", 
-        help="Use clipboard content as instructions",
+        help="Launch the graphical user interface"
     )
-    parser.add_argument("filenames", nargs="*", help="Filenames to process")
-    parser.add_argument(
+    
+    # Input source arguments  
+    input_group = parser.add_argument_group('Input Sources')
+    input_group.add_argument(
+        "-i", "--instructions",
+        type=str,
+        help="Path to file containing instructions"
+    )
+    input_group.add_argument(
+        "-c", "--clipboard",
+        action="store_true",
+        help="Use clipboard content as instructions"
+    )
+    input_group.add_argument(
+        "filenames",
+        nargs="*", 
+        help="Source code files to process"
+    )
+    
+    # Behavior configuration
+    config_group = parser.add_argument_group('Configuration')
+    config_group.add_argument(
         "--chat-mode",
         default="code",
         choices=["code", "ask"],
-        help="Chat mode to use for aider",
+        help="Chat interaction mode: code editing or Q&A"
     )
-    parser.add_argument(
+    config_group.add_argument(
+        "--model",
+        type=str,
+        help="OpenAI model to use (default: gpt-4)"
+    )
+    config_group.add_argument(
         "--suggest-shell-commands",
         action="store_true",
-        help="Suggest shell commands while running aider",
+        help="Enable shell command suggestions"
     )
-    parser.add_argument("--model", help="Model to use for aider")
-    parser.add_argument(
-        "--gui", action="store_true", help="Launch the GUI interface"
-    )
-    parser.add_argument(
+    config_group.add_argument(
         "--auto",
-        action="store_true",
-        help="Automatically send ruff issues to aider (GUI mode only)",
+        action="store_true", 
+        help="Enable automatic issue fixing (GUI mode only)"
     )
-    return parser.parse_args(args)
+
+    # Parse and validate arguments
+    parsed_args = parser.parse_args(args)
+    
+    # Validate argument combinations
+    if parsed_args.auto and not parsed_args.gui:
+        parser.error("--auto requires --gui mode")
+        
+    if parsed_args.instructions and not os.path.exists(parsed_args.instructions):
+        parser.error(f"Instructions file not found: {parsed_args.instructions}")
+        
+    if parsed_args.filenames:
+        missing = [f for f in parsed_args.filenames if not os.path.exists(f)]
+        if missing:
+            parser.error(f"Source files not found: {', '.join(missing)}")
+            
+    return parsed_args
 
 def main():
     """Main entry point for the Aider Voice Assistant"""
