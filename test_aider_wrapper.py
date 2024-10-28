@@ -694,7 +694,7 @@ class TestGUIEventHandlers(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment"""
-        self.app, self.root = self.create_gui_app()
+        self.app, self.root = create_gui_app()
 
     def tearDown(self):
         """Clean up after tests"""
