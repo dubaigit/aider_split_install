@@ -28,9 +28,8 @@ Custom Instructions:
 
 3. **Use Aider Command**:
    - Execute the following command to apply fixes:  
-     ```bash
-aider --model anthropic/claude-3-5-sonnet-20241022 --no-pretty --message-file fix_instructions.txt  <filename1>  <filename2>
-     ```
+     ```bash aider --model anthropic/claude-3-5-sonnet-20241022 --no-pretty --message-file fix_instructions.txt  <filename1>  <filename2> ```
+     
 
 4. **Verify and Reiterate**:
    - Reread the file to confirm if all specified changes were correctly applied.
