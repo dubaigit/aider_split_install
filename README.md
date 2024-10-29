@@ -1,4 +1,4 @@
-# aider_split(Aplha)
+# aider_split(Alpha)
 
 A powerful parallel code modification tool that leverages aider CLI to run multiple concurrent code refactoring tasks, supporting parallel modifications within the same file using precise search/replace patterns.
 
